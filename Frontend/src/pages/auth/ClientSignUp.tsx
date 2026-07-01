@@ -3,8 +3,7 @@ import { Eye, EyeOff, ArrowLeft, ArrowRight, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchableSelect from "../../components/shared/SearchableSelect";
 import { api } from "../../lib/api";
-import { useAuth } from "../../context/AuthContext";
-import { toInitials } from "../../context/authHelpers";
+
 
 const FONT = "'Inter', sans-serif";
 
@@ -108,7 +107,7 @@ export default function ClientRegistration() {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
-  const { login } = useAuth();
+
 
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
