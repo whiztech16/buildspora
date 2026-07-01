@@ -1,7 +1,5 @@
-/* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
 export type UserRole = "client" | "contractor" | "supplier";
 
@@ -11,25 +9,21 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   initials: string;
-  /** True only on the very first session after signup */
   isFirstLogin: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (user: AuthUser) => void;
+  login: (user: AuthUser, token: string) => void;
   logout: () => void;
   clearFirstLogin: () => void;
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SESSION_KEY = "buildspora_session";
-
-// ── Provider ──────────────────────────────────────────────────────────────────
+const TOKEN_KEY = "buildspora_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -41,22 +35,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
+
   const [isLoading] = useState(false);
 
-  const login = useCallback((newUser: AuthUser) => {
+  const login = useCallback((newUser: AuthUser, token: string) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
+    localStorage.setItem(TOKEN_KEY, token);
     setUser(newUser);
   }, []);
 
   const logout = () => {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   };
 
-  /**
-   * Called once after the user has seen their "Welcome to BuildSpora!" greeting.
-   * Clears the first-login flag so it never shows again.
-   */
   const clearFirstLogin = () => {
     if (!user) return;
     const updated = { ...user, isFirstLogin: false };
@@ -77,11 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
-

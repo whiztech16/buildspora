@@ -5,6 +5,7 @@ interface OTPModalProps {
   isOpen: boolean;
   onClose: () => void;
   onVerify: (otp: string) => Promise<void>;
+  onResend?: () => Promise<void>;
   email?: string;
   actionLabel?: string;
 }
@@ -26,6 +27,7 @@ export default function OTPModal({
   isOpen,
   onClose,
   onVerify,
+  onResend,
   email = "ch***@gmail.com",
   actionLabel = "Verify OTP",
 }: OTPModalProps) {
@@ -34,12 +36,12 @@ export default function OTPModal({
   const [error, setError] = useState("");
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300);
+  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
-    setTimeout(() => setTimeLeft(300), 0);
+    setTimeout(() => setTimeLeft(600), 0);
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) { clearInterval(timer); return 0; }
@@ -112,8 +114,12 @@ export default function OTPModal({
     setResending(true);
     setError("");
     setOtp(["", "", "", "", "", ""]);
-    await new Promise(r => setTimeout(r, 1000));
-    setTimeLeft(300);
+    try {
+      if (onResend) await onResend();
+    } catch {
+      // fail silently
+    }
+    setTimeLeft(600);
     setResent(true);
     setResending(false);
     setTimeout(() => setResent(false), 3000);
@@ -123,15 +129,8 @@ export default function OTPModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="bg-white rounded-2xl w-full max-w-[380px] p-7 shadow-2xl relative"
-        style={{ fontFamily: "'Inter', sans-serif" }}
-      >
+    <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-2xl w-full max-w-[380px] p-7 shadow-2xl relative" style={{ fontFamily: "'Inter', sans-serif" }}>
         <button
           className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#F1F5F9] transition-colors"
           onClick={onClose}
@@ -140,7 +139,6 @@ export default function OTPModal({
           <X size={16} className="text-[#94A3B8]" />
         </button>
 
-        {/* Title */}
         <div className="mb-5">
           <h3 className="text-[17px] font-bold text-[#0F172A]">Enter verification code</h3>
           <p className="text-[13px] text-[#64748B] mt-0.5">
@@ -148,7 +146,6 @@ export default function OTPModal({
           </p>
         </div>
 
-        {/* OTP inputs */}
         <div className="flex gap-2 mb-3" onPaste={handlePaste}>
           {otp.map((digit, i) => (
             <input
@@ -171,11 +168,8 @@ export default function OTPModal({
           ))}
         </div>
 
-        {error && (
-          <p className="text-[12.5px] text-red-500 mb-3">{error}</p>
-        )}
+        {error && <p className="text-[12.5px] text-red-500 mb-3">{error}</p>}
 
-        {/* Timer + Resend */}
         <div className="flex justify-between items-center mb-5 mt-1">
           {timeLeft > 0 ? (
             <p className="text-[12.5px] text-[#94A3B8]">
@@ -190,7 +184,7 @@ export default function OTPModal({
           <button
             className="text-[12.5px] font-semibold text-[#475569] hover:text-[#0F172A] flex items-center gap-1 disabled:opacity-40 transition-colors"
             onClick={handleResend}
-            disabled={resending || timeLeft > 240}
+            disabled={resending || timeLeft > 540}
           >
             {resending ? (
               <><RefreshCw size={12} className="animate-spin" /> Sending...</>
@@ -202,7 +196,6 @@ export default function OTPModal({
           </button>
         </div>
 
-        {/* Submit */}
         <button
           className="w-full bg-[#0F172A] text-white rounded-xl py-3 text-[13.5px] font-semibold flex items-center justify-center gap-2 hover:bg-black transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={handleVerify}
