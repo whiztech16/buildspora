@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  Plus, Menu, CheckCircle2, Circle, ChevronRight, ChevronLeft, Settings, Check
+  Plus, Menu, CheckCircle2, Circle, ChevronRight, Settings, Check
 } from "lucide-react";
 import ContractorPayments from "./ContractorPayments";
 import ContractorMilestones from "./ContractorMilestones";
