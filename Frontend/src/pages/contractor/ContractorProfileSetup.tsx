@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, Upload, Plus, Trash2, Camera } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Upload, Plus, Trash2, Camera, Loader2 } from "lucide-react";
 import SearchableSelect from "../../components/shared/SearchableSelect";
+import { api } from "../../lib/api";
 
 const FONT = "'Inter', sans-serif";
 
@@ -30,6 +31,27 @@ const NIGERIAN_BANKS = [
   "Unity Bank", "Wema Bank", "Zenith Bank",
 ];
 
+/* ─── Form state types ──────────────────────────────────── */
+interface FormData {
+  // Step 1
+  photo: string | null;
+  fullName: string;
+  phone: string;
+  state: string;
+  city: string;
+  bio: string;
+  // Step 2
+  specialty: string;
+  yearsExp: string;
+  workPreference: string;
+  teamSize: string;
+  // Step 4
+  bankName: string;
+  accountNum: string;
+  accountName: string;
+  nin: string;
+}
+
 /* ─── Reusable components ─────────────────────────────── */
 function Label({ text, required }: { text: string; required?: boolean }) {
   return (
@@ -40,11 +62,13 @@ function Label({ text, required }: { text: string; required?: boolean }) {
   );
 }
 
-function Input({
+function ControlledInput({
   label, id, placeholder, type = "text", required, maxLength, hint,
+  value, onChange,
 }: {
   label: string; id: string; placeholder: string; type?: string;
   required?: boolean; maxLength?: number; hint?: string;
+  value: string; onChange: (v: string) => void;
 }) {
   return (
     <div>
@@ -55,6 +79,8 @@ function Input({
         type={type}
         placeholder={placeholder}
         maxLength={maxLength}
+        value={value}
+        onChange={e => onChange(e.target.value)}
         className="w-full h-[46px] px-4 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all"
         style={{ fontFamily: FONT }}
       />
@@ -62,12 +88,12 @@ function Input({
   );
 }
 
-function Textarea({
-  label, id, placeholder, required, maxLength,
+function ControlledTextarea({
+  label, id, placeholder, required, maxLength, value, onChange,
 }: {
   label: string; id: string; placeholder: string; required?: boolean; maxLength?: number;
+  value: string; onChange: (v: string) => void;
 }) {
-  const [count, setCount] = useState(0);
   return (
     <div>
       <Label text={label} required={required} />
@@ -76,41 +102,27 @@ function Textarea({
         rows={4}
         placeholder={placeholder}
         maxLength={maxLength}
-        onChange={e => setCount(e.target.value.length)}
+        value={value}
+        onChange={e => onChange(e.target.value)}
         className="w-full px-4 py-3 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all resize-none"
         style={{ fontFamily: FONT }}
       />
       {maxLength && (
         <p className="text-[11.5px] text-[#94A3B8] text-right mt-1" style={{ fontFamily: FONT }}>
-          {count}/{maxLength}
+          {value.length}/{maxLength}
         </p>
       )}
     </div>
   );
 }
 
-function Select({
-  label, id, options, placeholder, required, hint,
-}: {
-  label: string; id: string; options: string[]; placeholder?: string;
-  required?: boolean; hint?: string;
-}) {
-  return (
-    <div>
-      <SearchableSelect id={id} label={label} options={options} placeholder={placeholder ?? "Select an option"} required={required} />
-      {hint && <p className="text-[12px] text-[#94A3B8] mt-1" style={{ fontFamily: FONT }}>{hint}</p>}
-    </div>
-  );
-}
-
 /* ─── Step 1: Basic Information ───────────────────────── */
-function Step1() {
-  const [photo, setPhoto] = useState<string | null>(null);
+function Step1({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: string | null) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setPhoto(URL.createObjectURL(file));
+    if (file) onChange("photo", URL.createObjectURL(file));
   };
 
   return (
@@ -123,8 +135,8 @@ function Step1() {
             onClick={() => fileRef.current?.click()}
             className="w-[80px] h-[80px] rounded-full border-2 border-dashed border-[#D1FAE5] bg-[#F0FDF4] flex flex-col items-center justify-center cursor-pointer hover:border-[#059669] transition-colors overflow-hidden shrink-0"
           >
-            {photo ? (
-              <img src={photo} alt="Profile" className="w-full h-full object-cover" />
+            {data.photo ? (
+              <img src={data.photo} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <>
                 <Camera size={20} className="text-[#10B981]" />
@@ -150,29 +162,38 @@ function Step1() {
         </div>
       </div>
 
-      <Input id="fullName" label="Full Name / Business Name" placeholder="e.g. Emeka Okafor" required />
+      <ControlledInput id="fullName" label="Full Name / Business Name" placeholder="e.g. Emeka Okafor" required value={data.fullName} onChange={v => onChange("fullName", v)} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <Input id="phone" label="Phone Number" placeholder="e.g. 0812 345 6789" type="tel" required />
-        <Input id="email" label="Email Address" placeholder="e.g. emeka@email.com" type="email" required />
+        <ControlledInput id="phone" label="Phone Number" placeholder="e.g. 0812 345 6789" type="tel" required value={data.phone} onChange={v => onChange("phone", v)} />
+        <div>
+          <Label text="State" required />
+          <SearchableSelect
+            id="state"
+            label=""
+            options={NIGERIAN_STATES}
+            placeholder="Select state"
+            required
+            value={data.state}
+            onChange={v => onChange("state", v)}
+          />
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <Select id="state" label="State" options={NIGERIAN_STATES} placeholder="Select state" required />
-        <Input id="city" label="City / Area" placeholder="e.g. Lekki Phase 1" required />
-      </div>
-      <Textarea
+      <ControlledInput id="city" label="City / Area" placeholder="e.g. Lekki Phase 1" required value={data.city} onChange={v => onChange("city", v)} />
+      <ControlledTextarea
         id="bio"
         label="Short Bio"
         placeholder="e.g. Experienced electrician specialising in residential and commercial installations."
         maxLength={500}
+        value={data.bio}
+        onChange={v => onChange("bio", v)}
       />
     </div>
   );
 }
 
 /* ─── Searchable Trade Dropdown ───────────────────────── */
-function SearchableTradeSelect({ label, required }: { label: string; required?: boolean }) {
+function SearchableTradeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState("");
   const [open, setOpen] = useState(false);
   const [otherValue, setOtherValue] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -181,7 +202,6 @@ function SearchableTradeSelect({ label, required }: { label: string; required?: 
     t => t !== "Other" && t.toLowerCase().includes(query.toLowerCase())
   );
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -193,20 +213,17 @@ function SearchableTradeSelect({ label, required }: { label: string; required?: 
   }, []);
 
   const choose = (trade: string) => {
-    setSelected(trade);
+    onChange(trade);
     setQuery("");
     setOpen(false);
   };
 
-  const displayValue = selected === "Other"
-    ? "Other"
-    : selected || "";
+  const displayValue = value === "Other" ? "Other" : value || "";
 
   return (
     <div>
-      <Label text={label} required={required} />
+      <Label text="Primary Trade" required />
       <div ref={containerRef} className="relative">
-        {/* Trigger / search input */}
         <div
           className={"flex items-center w-full h-[46px] px-4 rounded-lg border bg-white cursor-pointer transition-all " + (open ? "border-[#059669] ring-2 ring-[#059669]/10" : "border-[#E2E8F0]")}
           onClick={() => setOpen(o => !o)}
@@ -229,13 +246,11 @@ function SearchableTradeSelect({ label, required }: { label: string; required?: 
               {displayValue || "Search or select your trade"}
             </span>
           )}
-          {/* Chevron */}
           <svg className={"w-3 h-3 ml-2 shrink-0 transition-transform " + (open ? "rotate-180" : "")} viewBox="0 0 12 8" fill="none">
             <path d="M1 1.5L6 6.5L11 1.5" stroke="#94A3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
 
-        {/* Dropdown */}
         {open && (
           <div className="absolute z-50 mt-1 w-full bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden">
             <div className="max-h-[220px] overflow-y-auto">
@@ -247,43 +262,41 @@ function SearchableTradeSelect({ label, required }: { label: string; required?: 
                   key={trade}
                   onMouseDown={() => choose(trade)}
                   className={"flex items-center justify-between px-4 py-2.5 text-[14px] cursor-pointer transition-colors " + (
-                    selected === trade
+                    value === trade
                       ? "bg-[#F0FDF4] text-[#059669] font-semibold"
                       : "text-[#0F172A] hover:bg-[#F8FAFC]"
                   )}
                   style={{ fontFamily: FONT }}
                 >
                   {trade}
-                  {selected === trade && <Check size={14} strokeWidth={2.5} className="text-[#059669]" />}
+                  {value === trade && <Check size={14} strokeWidth={2.5} className="text-[#059669]" />}
                 </div>
               ))}
             </div>
-            {/* Always-visible Other option */}
             <div className="border-t border-[#F1F5F9]">
               <div
                 onMouseDown={() => choose("Other")}
                 className={"flex items-center justify-between px-4 py-2.5 text-[14px] cursor-pointer transition-colors " + (
-                  selected === "Other"
+                  value === "Other"
                     ? "bg-[#F0FDF4] text-[#059669] font-semibold"
                     : "text-[#475569] hover:bg-[#F8FAFC] italic"
                 )}
                 style={{ fontFamily: FONT }}
               >
                 Other (specify below)
-                {selected === "Other" && <Check size={14} strokeWidth={2.5} className="text-[#059669]" />}
+                {value === "Other" && <Check size={14} strokeWidth={2.5} className="text-[#059669]" />}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Reveal input when Other is selected */}
-      {selected === "Other" && (
+      {value === "Other" && (
         <div className="mt-3">
           <input
             autoFocus
             value={otherValue}
-            onChange={e => setOtherValue(e.target.value)}
+            onChange={e => { setOtherValue(e.target.value); onChange(e.target.value); }}
             placeholder="e.g. Scaffolding, Glass Installer..."
             className="w-full h-[46px] px-4 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all"
             style={{ fontFamily: FONT }}
@@ -295,42 +308,44 @@ function SearchableTradeSelect({ label, required }: { label: string; required?: 
 }
 
 /* ─── Step 2: Work Information ────────────────────────── */
-function Step2() {
+function Step2({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: string) => void }) {
   return (
     <div className="space-y-5">
-      <SearchableTradeSelect label="Primary Trade" required />
-      <Input
+      <SearchableTradeSelect value={data.specialty} onChange={v => onChange("specialty", v)} />
+      <ControlledInput
         id="yearsExp"
         label="Years of Experience"
         placeholder="e.g. 5"
         type="number"
         required
         hint="How many years have you been working in this trade?"
+        value={data.yearsExp}
+        onChange={v => onChange("yearsExp", v)}
       />
-      <Select
-        id="workPref"
-        label="Work Preference"
-        required
-        placeholder="Select preference"
-        options={[
-          "Residential Projects",
-          "Commercial Projects",
-          "Industrial Projects",
-          "All Projects",
-        ]}
-      />
-      <Select
-        id="teamSize"
-        label="Team Size"
-        required
-        placeholder="Select team size"
-        options={[
-          "Just Me",
-          "2–5 Workers",
-          "6–10 Workers",
-          "More than 10 Workers",
-        ]}
-      />
+      <div>
+        <Label text="Work Preference" required />
+        <SearchableSelect
+          id="workPref"
+          label=""
+          required
+          placeholder="Select preference"
+          options={["Residential Projects", "Commercial Projects", "Industrial Projects", "All Projects"]}
+          value={data.workPreference}
+          onChange={v => onChange("workPreference", v)}
+        />
+      </div>
+      <div>
+        <Label text="Team Size" required />
+        <SearchableSelect
+          id="teamSize"
+          label=""
+          required
+          placeholder="Select team size"
+          options={["Just Me", "2–5 Workers", "6–10 Workers", "More than 10 Workers"]}
+          value={data.teamSize}
+          onChange={v => onChange("teamSize", v)}
+        />
+      </div>
     </div>
   );
 }
@@ -351,22 +366,34 @@ function ProjectEntry({ entry, onRemove, showRemove }: { entry: Project; onRemov
           </button>
         )}
       </div>
-      <Input
-        id={`projectType-${entry.id}`}
-        label="Project Type"
-        placeholder="e.g. Electrical Installation"
-      />
-      <Input
-        id={`projectLocation-${entry.id}`}
-        label="Project Location"
-        placeholder="e.g. Lekki Phase 1, Lagos"
-      />
-      <Textarea
-        id={`projectDesc-${entry.id}`}
-        label="Project Description"
-        placeholder="e.g. Installed complete electrical wiring for a five-bedroom duplex."
-      />
-      {/* Photo upload */}
+      <div>
+        <Label text="Project Type" />
+        <input
+          id={`projectType-${entry.id}`}
+          placeholder="e.g. Electrical Installation"
+          className="w-full h-[46px] px-4 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all"
+          style={{ fontFamily: FONT }}
+        />
+      </div>
+      <div>
+        <Label text="Project Location" />
+        <input
+          id={`projectLocation-${entry.id}`}
+          placeholder="e.g. Lekki Phase 1, Lagos"
+          className="w-full h-[46px] px-4 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all"
+          style={{ fontFamily: FONT }}
+        />
+      </div>
+      <div>
+        <Label text="Project Description" />
+        <textarea
+          id={`projectDesc-${entry.id}`}
+          rows={4}
+          placeholder="e.g. Installed complete electrical wiring for a five-bedroom duplex."
+          className="w-full px-4 py-3 rounded-lg border border-[#E2E8F0] text-[14px] text-[#0F172A] placeholder-[#CBD5E1] bg-white outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all resize-none"
+          style={{ fontFamily: FONT }}
+        />
+      </div>
       <div>
         <Label text="Upload Photos" />
         <label
@@ -449,34 +476,41 @@ function Step3() {
 }
 
 /* ─── Step 4: Account Information ─────────────────────── */
-function Step4() {
+function Step4({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: string) => void }) {
   const [agreed1, setAgreed1] = useState(false);
   const [agreed2, setAgreed2] = useState(false);
 
   return (
     <div className="space-y-5">
-      <Select
-        id="bankName"
-        label="Bank Name"
-        required
-        placeholder="Select your bank"
-        options={NIGERIAN_BANKS}
-      />
-      <Input id="accountNumber" label="Account Number" placeholder="10-digit account number" required maxLength={10} type="text" />
+      <div>
+        <Label text="Bank Name" required />
+        <SearchableSelect
+          id="bankName"
+          label=""
+          required
+          placeholder="Select your bank"
+          options={NIGERIAN_BANKS}
+          value={data.bankName}
+          onChange={v => onChange("bankName", v)}
+        />
+      </div>
+      <ControlledInput id="accountNumber" label="Account Number" placeholder="10-digit account number" required maxLength={10} type="text" value={data.accountNum} onChange={v => onChange("accountNum", v)} />
       <div>
         <Label text="Account Name" />
         <div className="w-full h-[46px] px-4 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center">
           <span className="text-[13.5px] text-[#94A3B8]" style={{ fontFamily: FONT }}>
-            Auto-filled after account verification
+            {data.accountName || "Auto-filled after account verification"}
           </span>
         </div>
       </div>
-      <Input
+      <ControlledInput
         id="nin"
         label="National Identification Number (NIN)"
         placeholder="11-digit NIN"
         maxLength={11}
         hint="Optional — helps speed up identity verification"
+        value={data.nin}
+        onChange={v => onChange("nin", v)}
       />
 
       {/* Checkboxes */}
@@ -528,16 +562,67 @@ const STEPS = [
 export default function ContractorProfileSetup() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const total = STEPS.length;
+
+  const [formData, setFormData] = useState<FormData>({
+    photo: null,
+    fullName: "",
+    phone: "",
+    state: "",
+    city: "",
+    bio: "",
+    specialty: "",
+    yearsExp: "",
+    workPreference: "",
+    teamSize: "",
+    bankName: "",
+    accountNum: "",
+    accountName: "",
+    nin: "",
+  });
+
+  const updateField = (key: keyof FormData, value: string | null) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await api.patch("/api/user/profile", {
+        fullName: formData.fullName || undefined,
+        phone: formData.phone || undefined,
+        avatarUrl: formData.photo || undefined,
+        specialty: formData.specialty || undefined,
+        state: formData.state || undefined,
+        city: formData.city || undefined,
+        yearsExp: formData.yearsExp ? Number(formData.yearsExp) : undefined,
+        workPreference: formData.workPreference || undefined,
+        teamSize: formData.teamSize || undefined,
+        bio: formData.bio || undefined,
+        nin: formData.nin || undefined,
+        bankName: formData.bankName || undefined,
+        bankCode: formData.bankName || undefined, // used as identifier if no code lookup
+        accountNum: formData.accountNum || undefined,
+        accountName: formData.accountName || undefined,
+      });
+      localStorage.setItem("buildspora_profile_complete", "true");
+      navigate("/dashboard/contractor");
+    } catch (err: any) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleNext = () => {
     if (currentStep < total) {
       setCurrentStep(s => s + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
-      // Mark profile as complete, go to dashboard completed state
-      localStorage.setItem("buildspora_profile_complete", "true");
-      navigate("/dashboard/contractor");
+      handleSubmit();
     }
   };
 
@@ -632,16 +717,24 @@ export default function ContractorProfileSetup() {
             {currentStep === 4 && "Where you'll receive your payments."}
           </p>
 
-          {currentStep === 1 && <Step1 />}
-          {currentStep === 2 && <Step2 />}
+          {currentStep === 1 && <Step1 data={formData} onChange={updateField} />}
+          {currentStep === 2 && <Step2 data={formData} onChange={(k, v) => updateField(k, v)} />}
           {currentStep === 3 && <Step3 />}
-          {currentStep === 4 && <Step4 />}
+          {currentStep === 4 && <Step4 data={formData} onChange={(k, v) => updateField(k, v)} />}
+
+          {/* ── Error message ── */}
+          {error && currentStep === total && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-[13px] text-red-600" style={{ fontFamily: FONT }}>{error}</p>
+            </div>
+          )}
 
           {/* ── Nav buttons ── */}
           <div className="flex items-center justify-between mt-8 pt-6">
             <button
               onClick={handleBack}
-              className="flex items-center gap-2 px-2 py-2.5 text-[13.5px] font-semibold text-[#475569] hover:text-[#0F172A] transition-colors"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-2 py-2.5 text-[13.5px] font-semibold text-[#475569] hover:text-[#0F172A] transition-colors disabled:opacity-50"
               style={{ fontFamily: FONT }}
             >
               <ArrowLeft size={15} />
@@ -649,11 +742,21 @@ export default function ContractorProfileSetup() {
             </button>
             <button
               onClick={handleNext}
-              className="flex items-center gap-2 px-6 py-2.5 bg-[#059669] hover:bg-[#047857] text-white rounded-xl text-[13.5px] font-semibold transition-colors shadow-sm"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-6 py-2.5 bg-[#059669] hover:bg-[#047857] text-white rounded-xl text-[13.5px] font-semibold transition-colors shadow-sm disabled:opacity-60"
               style={{ fontFamily: FONT }}
             >
-              {currentStep === total ? "Save Profile" : "Next"}
-              {currentStep < total && <ArrowRight size={15} />}
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  {currentStep === total ? "Save Profile" : "Next"}
+                  {currentStep < total && <ArrowRight size={15} />}
+                </>
+              )}
             </button>
           </div>
         </div>

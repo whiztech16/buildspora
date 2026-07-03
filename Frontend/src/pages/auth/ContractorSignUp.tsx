@@ -3,6 +3,7 @@ import { Eye, EyeOff, ArrowLeft, ArrowRight, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchableSelect from "../../components/shared/SearchableSelect";
 import { api } from "../../lib/api";
+import AgreeCheckboxes from "../../components/shared/AgreeCheckboxes";
 
 const FONT = "'Inter', sans-serif";
 
@@ -89,6 +90,9 @@ export default function ContractorRegistration() {
   const [yearsExp, setYearsExp] = useState("");
   const [nin, setNin] = useState("");
 
+  const [agreed, setAgreed] = useState(false);
+  const [showAgreeError, setShowAgreeError] = useState(false);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -113,6 +117,7 @@ export default function ContractorRegistration() {
 
   const handleSubmit = async () => {
     setError("");
+    if (!agreed) { setShowAgreeError(true); return; }
     setLoading(true);
     try {
       const specialty = selectedTrade === "Other" ? otherTrade : selectedTrade;
@@ -193,6 +198,7 @@ export default function ContractorRegistration() {
             <div className="flex flex-col gap-5 mt-8">
               <FormInput id="contractor-nin" label="NIN Number" placeholder="Enter your NIN number" required value={nin} onChange={e => setNin(e.target.value)} />
               <PhotoUpload id="contractor-photo" label="Profile Photo" optional />
+              <AgreeCheckboxes agreed={agreed} onToggle={v => { setAgreed(v); if (v) setShowAgreeError(false); }} showError={showAgreeError} />
             </div>
             {error && <p className="text-red-500 text-[13px] mt-4 text-center">{error}</p>}
             <div className="flex items-center justify-between mt-12">

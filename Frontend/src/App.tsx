@@ -12,6 +12,8 @@ import SupplierRegistration from './pages/auth/SupplierSignUp.tsx'
 import SignIn from './pages/auth/SignIn.tsx'
 import AccountCreated from './pages/auth/AccountCreated.tsx'
 import ForgotPassword from './pages/auth/ForgotPassword.tsx'
+import TermsPage from './pages/legal/TermsPage.tsx'
+import PrivacyPage from './pages/legal/PrivacyPage.tsx'
 
 import DashboardEmpty from './pages/client/ClientDashboard.tsx'
 import ProjectDetail from './pages/client/ProjectDetail.tsx'
@@ -57,6 +59,8 @@ function AppShell() {
       <Route path="/signin" element={<SignIn />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/account-created" element={<AccountCreated />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       {/* ── Smart /dashboard redirect ─────────────────────────────── */}
       <Route path="/dashboard" element={<DashboardRedirect />} />

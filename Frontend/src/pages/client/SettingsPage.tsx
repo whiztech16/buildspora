@@ -1,8 +1,116 @@
-import { useState } from "react";
-import { User, Mail, Phone, MapPin, Shield, Key } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { User, Mail, Phone, MapPin, Shield, Key, Loader2, Check } from "lucide-react";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+
+interface ProfileResponse {
+  success: boolean;
+  user: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    phone: string | null;
+    role: string;
+  };
+  profile: {
+    country?: string | null;
+    avatarUrl?: string | null;
+    fullName?: string | null;
+    phone?: string | null;
+  } | null;
+}
 
 export default function SettingsPage() {
+  const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
+
+  // Profile form state
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // UI state
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load current profile on mount
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await api.get<ProfileResponse>("/api/user/me");
+        const u = res.user;
+        const p = res.profile;
+        setFullName(p?.fullName || u.fullName || "");
+        setEmail(u.email || "");
+        setPhone(p?.phone || u.phone || "");
+        setCountry(p?.country || "");
+        setAvatarUrl(p?.avatarUrl || null);
+      } catch {
+        // silently fall through — form stays empty
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      await api.patch("/api/user/profile", {
+        fullName: fullName || undefined,
+        phone: phone || undefined,
+        country: country || undefined,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setSaveError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    setSaveError(null);
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      
+      const res = await api.postForm<{ success: boolean; avatarUrl?: string }>("/api/user/avatar", formData);
+      if (res.avatarUrl) {
+        setAvatarUrl(res.avatarUrl);
+      } else {
+        // Fallback: reload profile to get new avatarUrl
+        const updated = await api.get<ProfileResponse>("/api/user/me");
+        setAvatarUrl(updated.profile?.avatarUrl || null);
+      }
+    } catch (err: any) {
+      setSaveError(err.message || "Failed to upload avatar.");
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const initials = fullName
+    ? fullName.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("")
+    : authUser?.initials || "?";
 
   return (
     <div className="flex flex-col animate-fade-in pb-10">
@@ -29,7 +137,7 @@ export default function SettingsPage() {
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors whitespace-nowrap lg:whitespace-normal text-left ${activeTab === "security" ? "bg-[#F0FDF4] text-[#16A34A] font-semibold" : "text-[#475569] hover:bg-[#F8FAFC]"}`}
             >
               <Shield size={18} />
-              <span className="text-[14px]">Security & Password</span>
+              <span className="text-[14px]">Security &amp; Password</span>
             </button>
           </div>
         </div>
@@ -41,57 +149,121 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-8 animate-fade-in">
               
               <div className="flex items-center gap-6 pb-8 border-b border-[#F1F5F9]">
-                <div className="w-[80px] h-[80px] rounded-full bg-[#E2E8F0] flex items-center justify-center text-[28px] font-bold text-[#64748B]">
-                  JD
+                <div className="w-[80px] h-[80px] rounded-full bg-[#E2E8F0] flex items-center justify-center text-[28px] font-bold text-[#64748B] overflow-hidden relative">
+                  {isLoadingProfile ? "…" : avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
+                  {isUploadingAvatar && (
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                       <Loader2 className="animate-spin text-white" size={24} />
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-[18px] font-bold text-[#0F172A] mb-1">John Doe</h3>
+                  <h3 className="text-[18px] font-bold text-[#0F172A] mb-1">
+                    {isLoadingProfile ? "Loading…" : (fullName || "Your Name")}
+                  </h3>
                   <p className="text-[14px] text-[#64748B] mb-3">Client Account</p>
                   <div className="flex gap-3">
-                    <button className="text-[13px] font-semibold bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] px-4 py-1.5 rounded-full hover:bg-[#F1F5F9] transition-colors">
-                      Change Avatar
-                    </button>
-                    <button className="text-[13px] font-semibold text-red-500 px-4 py-1.5 rounded-full hover:bg-red-50 transition-colors">
-                      Remove
+                    <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleAvatarChange} />
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingAvatar || isLoadingProfile}
+                      className="text-[13px] font-semibold bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] px-4 py-1.5 rounded-full hover:bg-[#F1F5F9] transition-colors disabled:opacity-50"
+                    >
+                      {isUploadingAvatar ? "Uploading..." : "Change Avatar"}
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[13px] font-semibold text-[#475569] mb-2">Full Name</label>
-                  <div className="relative">
-                    <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                    <input type="text" defaultValue="John Doe" className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all" />
+              {isLoadingProfile ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={24} className="animate-spin text-[#16A34A]" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[13px] font-semibold text-[#475569] mb-2">Full Name</label>
+                    <div className="relative">
+                      <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={e => setFullName(e.target.value)}
+                        placeholder="Your full name"
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-semibold text-[#475569] mb-2">Email Address</label>
+                    <div className="relative">
+                      <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                      <input
+                        type="email"
+                        value={email}
+                        disabled
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F1F5F9] border border-[#E2E8F0] text-[14px] font-medium text-[#64748B] cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-semibold text-[#475569] mb-2">Phone Number</label>
+                    <div className="relative">
+                      <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        placeholder="e.g. +44 7700 900077"
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-semibold text-[#475569] mb-2">Country of Residence</label>
+                    <div className="relative">
+                      <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                      <input
+                        type="text"
+                        value={country}
+                        onChange={e => setCountry(e.target.value)}
+                        placeholder="e.g. Nigeria"
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all"
+                      />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-[13px] font-semibold text-[#475569] mb-2">Email Address</label>
-                  <div className="relative">
-                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                    <input type="email" defaultValue="johndoe@example.com" disabled className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F1F5F9] border border-[#E2E8F0] text-[14px] font-medium text-[#64748B] cursor-not-allowed" />
-                  </div>
+              )}
+
+              {/* Error / Success feedback */}
+              {saveError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-[13px] text-red-600">{saveError}</p>
                 </div>
-                <div>
-                  <label className="block text-[13px] font-semibold text-[#475569] mb-2">Phone Number</label>
-                  <div className="relative">
-                    <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                    <input type="tel" defaultValue="+44 7700 900077" className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all" />
-                  </div>
+              )}
+              {saveSuccess && (
+                <div className="flex items-center gap-2 p-3 bg-[#F0FDF4] border border-[#D1FAE5] rounded-xl">
+                  <Check size={16} className="text-[#16A34A]" />
+                  <p className="text-[13px] text-[#16A34A] font-medium">Profile updated successfully!</p>
                 </div>
-                <div>
-                  <label className="block text-[13px] font-semibold text-[#475569] mb-2">Country of Residence</label>
-                  <div className="relative">
-                    <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                    <input type="text" defaultValue="United Kingdom" className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] text-[14px] font-medium text-[#0F172A] transition-all" />
-                  </div>
-                </div>
-              </div>
+              )}
 
               <div className="pt-6 mt-2 border-t border-[#F1F5F9] flex justify-end">
-                <button className="bg-[#16A34A] hover:bg-[#15803d] text-white px-6 py-2.5 rounded-full text-[14px] font-semibold transition-colors shadow-sm">
-                  Save Changes
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={isSaving || isLoadingProfile}
+                  className="flex items-center gap-2 bg-[#16A34A] hover:bg-[#15803d] disabled:opacity-60 text-white px-6 py-2.5 rounded-full text-[14px] font-semibold transition-colors shadow-sm"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      Saving…
+                    </>
+                  ) : "Save Changes"}
                 </button>
               </div>
             </div>

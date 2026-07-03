@@ -7,6 +7,28 @@ import ContractorPayments from "./ContractorPayments";
 import ContractorMilestones from "./ContractorMilestones";
 import ContractorSidebar from "../../components/contractor/ContractorSidebar";
 import ContractorUpdates from "./ContractorUpdates";
+import { api } from "../../lib/api";
+
+interface ContractorProfile {
+  avatarUrl?: string | null;
+  specialty?: string | null;
+  bio?: string | null;
+  nin?: string | null;
+  yearsExp?: number | null;
+}
+
+function computeCompletion(profile: ContractorProfile | null): { percent: number; checks: { title: string; desc: string; done: boolean }[] } {
+  const checks = [
+    { title: "Add profile photo",   desc: "Help clients recognize you",       done: !!profile?.avatarUrl },
+    { title: "Add your skills",     desc: "Showcase what you're good at",     done: !!profile?.specialty },
+    { title: "Add experience",      desc: "Let clients know your background", done: !!profile?.bio },
+    { title: "Add portfolio",       desc: "Upload your work examples",        done: !!profile?.yearsExp },
+    { title: "Verify your identity",desc: "Get verified to build trust",      done: !!profile?.nin },
+  ];
+  const done = checks.filter(c => c.done).length;
+  const percent = Math.round((done / checks.length) * 100);
+  return { percent, checks };
+}
 
 const FONT = "'Inter', sans-serif";
 
@@ -18,20 +40,22 @@ export default function ContractorDashboard() {
   const [desktopOpen, setDesktopOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
-  const [dashboardState, setDashboardState] = useState<'incomplete' | 'complete' | 'active'>(() => {
-    return localStorage.getItem('buildspora_profile_complete') === 'true' ? 'complete' : 'incomplete';
-  });
-  const isComplete = dashboardState === 'complete' || dashboardState === 'active';
-  const hasActiveProject = dashboardState === 'active';
 
-  const cycleState = (direction: 'next' | 'prev') => {
-    const states: ('incomplete' | 'complete' | 'active')[] = ['incomplete', 'complete', 'active'];
-    const currentIndex = states.indexOf(dashboardState);
-    let nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-    if (nextIndex >= states.length) nextIndex = 0;
-    if (nextIndex < 0) nextIndex = states.length - 1;
-    setDashboardState(states[nextIndex]);
-  };
+  // Real profile completion state
+  const [profile, setProfile] = useState<ContractorProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  const { percent, checks } = computeCompletion(profile);
+  const isComplete = percent === 100;
+  const hasActiveProject = false; // will be dynamic once jobs are live
+
+  // Fetch profile on mount (and after returning from profile-setup)
+  useEffect(() => {
+    api.get<{ success: boolean; profile: ContractorProfile | null }>("/api/user/me")
+      .then(res => { setProfile(res.profile); })
+      .catch(() => {})
+      .finally(() => setProfileLoaded(true));
+  }, [location.key]); // re-fetch every time the route key changes (i.e. coming back from setup)
 
   useEffect(() => {
     if (location.state?.activeTab) {
@@ -95,24 +119,6 @@ export default function ContractorDashboard() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
-                  {/* Dev toggle arrows */}
-                  <div className="flex items-center gap-1 mr-2 bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0]">
-                    <button 
-                      onClick={() => cycleState('prev')}
-                      className="p-1.5 rounded-md transition-colors text-[#64748B] hover:text-[#0F172A]"
-                      title="Previous State"
-                    >
-                      <ChevronLeft size={16} strokeWidth={2.5} />
-                    </button>
-                    <button 
-                      onClick={() => cycleState('next')}
-                      className="p-1.5 rounded-md transition-colors text-[#64748B] hover:text-[#0F172A]"
-                      title="Next State"
-                    >
-                      <ChevronRight size={16} strokeWidth={2.5} />
-                    </button>
-                  </div>
-
                   <button 
                     onClick={() => navigate('/dashboard/contractor/offer-service')}
                     className="flex items-center gap-2 bg-[#0F172A] text-white text-[13.5px] font-medium px-5 py-2.5 rounded-lg hover:bg-black transition-colors shadow-sm"
@@ -259,22 +265,21 @@ export default function ContractorDashboard() {
                     </p>
                     
                     <div className="mb-2">
-                      <span className="text-[14px] font-bold text-[#10B981]">25% complete</span>
+                      <span className="text-[14px] font-bold text-[#10B981]">
+                        {profileLoaded ? `${percent}% complete` : "Loading…"}
+                      </span>
                     </div>
                     <div className="w-full h-[8px] bg-[#F1F5F9] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#10B981] rounded-full w-[25%]"></div>
+                      <div
+                        className="h-full bg-[#10B981] rounded-full transition-all duration-500"
+                        style={{ width: profileLoaded ? `${percent}%` : "0%" }}
+                      />
                     </div>
                   </div>
 
                   {/* Middle: Checklist */}
                   <div className="flex-1 flex flex-col gap-3">
-                    {[
-                      { title: "Add profile photo", desc: "Help clients recognize you", done: true },
-                      { title: "Add your skills", desc: "Showcase what you're good at", done: false },
-                      { title: "Add experience", desc: "Let clients know your background", done: false },
-                      { title: "Add portfolio", desc: "Upload your work examples", done: false },
-                      { title: "Verify your identity", desc: "Get verified to build trust", done: false },
-                    ].map((item) => (
+                    {checks.map((item) => (
                       <div key={item.title} className="flex items-start gap-3">
                         <div className="mt-0.5 shrink-0">
                           {item.done ? (

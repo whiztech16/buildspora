@@ -182,7 +182,13 @@ export default function MilestonesTab({ hasContractor: propHasContractor }: { ha
       {/* SHARED SECTION: MILESTONES LIST (Data updates based on state) */}
       {/* ------------------------------------------------------------- */}
       <div className="bg-white border border-[#F1F5F9] rounded-[24px] p-6 sm:p-8 shadow-sm">
-        <h2 className="text-[17px] font-semibold text-[#0F172A] mb-6">Milestones</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-[17px] font-semibold text-[#0F172A]">Milestones</h2>
+          <div className="text-right">
+            <span className="text-[12px] font-medium text-[#64748B] block mb-0.5 uppercase tracking-wider">Overall Budget</span>
+            <span className="text-[18px] font-bold text-[#16A34A]">₦12,000,000</span>
+          </div>
+        </div>
         
         <div className="flex flex-col gap-3.5">
           {milestonesToRender.map((milestone, idx) => {

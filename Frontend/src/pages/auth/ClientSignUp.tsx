@@ -3,6 +3,7 @@ import { Eye, EyeOff, ArrowLeft, ArrowRight, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchableSelect from "../../components/shared/SearchableSelect";
 import { api } from "../../lib/api";
+import AgreeCheckboxes from "../../components/shared/AgreeCheckboxes";
 
 
 const FONT = "'Inter', sans-serif";
@@ -103,6 +104,9 @@ export default function ClientRegistration() {
   const [country, setCountry] = useState("");
   const [phone, setPhone] = useState("");
 
+  const [agreed, setAgreed] = useState(false);
+  const [showAgreeError, setShowAgreeError] = useState(false);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -126,6 +130,7 @@ export default function ClientRegistration() {
   const handleSubmit = async () => {
     setError("");
     if (!country) { setError("Please select your country."); return; }
+    if (!agreed) { setShowAgreeError(true); return; }
 
     setLoading(true);
     try {
@@ -192,6 +197,7 @@ export default function ClientRegistration() {
               <SearchableSelect id="country" label="Country" placeholder="Select your country" options={COUNTRIES} value={country} onChange={setCountry} required />
               <FormInput id="phone-number" label="Phone Number" placeholder="Enter your phone number" type="tel" required value={phone} onChange={e => setPhone(e.target.value)} />
               <PhotoUpload label="Profile Photo" optional />
+              <AgreeCheckboxes agreed={agreed} onToggle={v => { setAgreed(v); if (v) setShowAgreeError(false); }} showError={showAgreeError} />
             </div>
 
             {error && <p className="text-red-500 text-[13px] mt-4 text-center">{error}</p>}

@@ -11,6 +11,50 @@ const NIGERIAN_STATES = [
   "Taraba", "Yobe", "Zamfara"
 ];
 
+const NEW_BUILD_MILESTONES = [
+  "Land Secured",
+  "Site Preparation",
+  "Foundation",
+  "Block Work",
+  "Roofing",
+  "Electrical",
+  "Finishing",
+  "Completed",
+];
+
+const RENOVATION_MILESTONES = [
+  "Assessment",
+  "Demolition",
+  "Structural Work",
+  "Plumbing/Electrical",
+  "Plastering/Tiling",
+  "Painting",
+  "Finishing",
+  "Completed",
+];
+
+const NEW_BUILD_WEIGHTS: Record<string, number> = {
+  "Land Secured": 0.25,
+  "Site Preparation": 0.05,
+  "Foundation": 0.15,
+  "Block Work": 0.15,
+  "Roofing": 0.10,
+  "Electrical": 0.10,
+  "Finishing": 0.15,
+  "Completed": 0.05,
+};
+
+const RENOVATION_WEIGHTS: Record<string, number> = {
+  "Assessment": 0.05,
+  "Demolition": 0.10,
+  "Structural Work": 0.20,
+  "Plumbing/Electrical": 0.15,
+  "Plastering/Tiling": 0.15,
+  "Painting": 0.10,
+  "Finishing": 0.15,
+  "Completed": 0.10,
+};
+
 export default function CreateProjectModal({
   isOpen,
   onClose,
@@ -22,7 +66,37 @@ export default function CreateProjectModal({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedState, setSelectedState] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [milestoneBudgets, setMilestoneBudgets] = useState<Record<string, string>>({});
+  const [overallBudgetInput, setOverallBudgetInput] = useState("");
   const navigate = useNavigate();
+
+  const currentMilestones = projectType === "new" ? NEW_BUILD_MILESTONES : RENOVATION_MILESTONES;
+
+  const handleBudgetChange = (milestone: string, value: string) => {
+    const cleanValue = value.replace(/[^0-9]/g, "");
+    setMilestoneBudgets(prev => ({ ...prev, [milestone]: cleanValue }));
+  };
+
+  const handleTotalBudgetChange = (value: string) => {
+    const cleanValue = value.replace(/[^0-9]/g, "");
+    setOverallBudgetInput(cleanValue);
+
+    if (!cleanValue) {
+      setMilestoneBudgets({});
+      return;
+    }
+    
+    const total = parseInt(cleanValue, 10);
+    const weights = projectType === "new" ? NEW_BUILD_WEIGHTS : RENOVATION_WEIGHTS;
+    const newMilestoneBudgets: Record<string, string> = {};
+    
+    currentMilestones.forEach(milestone => {
+      const weight = weights[milestone] || 0;
+      newMilestoneBudgets[milestone] = Math.round(total * weight).toString();
+    });
+    
+    setMilestoneBudgets(newMilestoneBudgets);
+  };
 
   const filteredStates = NIGERIAN_STATES.filter(state => 
     state.toLowerCase().includes(searchQuery.toLowerCase())
@@ -228,17 +302,47 @@ export default function CreateProjectModal({
                 </div>
               </div>
 
-              {/* Budget */}
+              {/* Overall Budget */}
               <div>
-                <label htmlFor="budget" className="block text-[13px] font-medium text-[#0F172A] mb-1.5">
-                  Estimated Total Budget (₦) <span className="text-[#059669]">*</span>
+                <label htmlFor="overallBudget" className="block text-[13px] font-medium text-[#0F172A] mb-1.5">
+                  Overall Budget Estimate (₦) <span className="text-[#059669]">*</span>
                 </label>
                 <input
-                  id="budget"
+                  id="overallBudget"
                   type="text"
                   placeholder="e.g. 12,000,000"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A]"
+                  value={overallBudgetInput ? parseInt(overallBudgetInput, 10).toLocaleString() : ""}
+                  onChange={(e) => handleTotalBudgetChange(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A] font-semibold"
                 />
+                <p className="text-[12px] text-gray-500 mt-1.5">
+                  Entering a total will automatically distribute the budget across milestones based on standard industry weights.
+                </p>
+              </div>
+
+              {/* Milestone Budgets */}
+              <div className="mt-2 bg-white border border-[#F1F5F9] rounded-xl p-4 sm:p-5">
+                <h4 className="text-[14.5px] font-bold text-[#0F172A] mb-4 flex items-center justify-between">
+                  <span>Milestone Breakdown</span>
+                  <span className="text-[12.5px] font-medium text-gray-500 font-normal">Adjust individual stages</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                  {currentMilestones.map((milestone) => (
+                    <div key={milestone}>
+                      <label className="block text-[12.5px] font-medium text-[#475569] mb-1.5">
+                        {milestone}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="0"
+                        value={milestoneBudgets[milestone] ? parseInt(milestoneBudgets[milestone]).toLocaleString() : ""}
+                        onChange={(e) => handleBudgetChange(milestone, e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[13.5px] placeholder-gray-300 transition-all text-[#0F172A]"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

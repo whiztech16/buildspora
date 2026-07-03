@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 function getToken(): string | null {
   return localStorage.getItem("buildspora_token");
@@ -10,12 +10,20 @@ async function request<T>(
 ): Promise<T> {
   const token = getToken();
 
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  
+  if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
+      ...headers,
+      ...(options.headers as any),
     },
   });
 
@@ -31,6 +39,9 @@ async function request<T>(
 export const api = {
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body) }),
+
+  postForm: <T>(path: string, body: FormData) =>
+    request<T>(path, { method: "POST", body }),
 
   get: <T>(path: string) =>
     request<T>(path, { method: "GET" }),

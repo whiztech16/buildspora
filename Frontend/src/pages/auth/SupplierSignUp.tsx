@@ -3,6 +3,7 @@ import { Eye, EyeOff, ArrowLeft, ArrowRight, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchableSelect from "../../components/shared/SearchableSelect";
 import { api } from "../../lib/api";
+import AgreeCheckboxes from "../../components/shared/AgreeCheckboxes";
 
 const FONT = "'Inter', sans-serif";
 
@@ -108,6 +109,9 @@ export default function SupplierRegistration() {
   const [description, setDescription] = useState("");
   const [cacNumber, setCacNumber] = useState("");
 
+  const [agreed, setAgreed] = useState(false);
+  const [showAgreeError, setShowAgreeError] = useState(false);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -133,6 +137,7 @@ export default function SupplierRegistration() {
 
   const handleSubmit = async () => {
     setError("");
+    if (!agreed) { setShowAgreeError(true); return; }
     setLoading(true);
     try {
       const businessType = selectedBusinessType === "Other" ? otherBusinessType : selectedBusinessType;
@@ -214,6 +219,7 @@ export default function SupplierRegistration() {
             <div className="flex flex-col gap-5 mt-8">
               <FormInput id="supplier-cac" label="CAC Registration Number" placeholder="Enter CAC number" required value={cacNumber} onChange={e => setCacNumber(e.target.value)} />
               <FileUpload id="supplier-logo" label="Company Logo" optional hint="JPG, PNG up to 5MB" />
+              <AgreeCheckboxes agreed={agreed} onToggle={v => { setAgreed(v); if (v) setShowAgreeError(false); }} showError={showAgreeError} />
             </div>
             {error && <p className="text-red-500 text-[13px] mt-4 text-center">{error}</p>}
             <div className="flex items-center justify-between mt-12">

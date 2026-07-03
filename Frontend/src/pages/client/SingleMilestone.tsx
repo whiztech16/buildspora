@@ -180,6 +180,11 @@ export default function SingleMilestone() {
                 <p className="text-[24px] font-bold text-gray-900">₦2,000,000</p>
               </div>
               
+              <div>
+                <p className="text-[13px] text-gray-500 mb-1">Overall Project Budget</p>
+                <p className="text-[16px] font-bold text-gray-700">₦12,000,000</p>
+              </div>
+              
               {viewState !== "approved" && (
                 <>
                   <div>
