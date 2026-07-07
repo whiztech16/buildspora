@@ -7,12 +7,14 @@ import {
   Plus, Lightbulb, Menu, X,
 } from "lucide-react";
 import CreateProjectModal from "../../components/client/CreateProjectModal";
+import { api } from "../../lib/api";
 import PaymentsEmpty from "./PaymentsScreen";
 import MilestonesTab from "./MilestoneDetail";
 import Marketplace from "./MarketplacePage";
 import Talents from "./TalentsPage";
 import SettingsPage from "./SettingsPage";
 import UpdatesPage from "./UpdatesPage";
+import NotificationDrawer from "../../components/shared/NotificationDrawer";
 
 const FONT = "'Inter', sans-serif";
 
@@ -35,9 +37,26 @@ export default function DashboardEmpty() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [devPopulated, setDevPopulated] = useState(false);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        const res = await api.get<{ success: boolean; projects: any[] }>("/api/projects");
+        if (res.success) {
+          setProjects(res.projects);
+        }
+      } catch (err) {
+        console.error("Failed to fetch projects:", err);
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    }
+    loadProjects();
+  }, []);
 
   useEffect(() => {
     if (location.state && location.state.activeTab) {
@@ -189,30 +208,17 @@ export default function DashboardEmpty() {
               <span style={{ color: "#059669" }}>Spora</span>
             </span>
           </div>
+          <NotificationDrawer />
         </div>
 
         {/* Content Wrapper */}
-        <div className="px-4 sm:px-6 md:px-10 pt-10 pb-16 sm:pt-16 sm:pb-24 max-w-[1000px] mx-auto w-full flex-1">
-          
-          {/* DEV STATE TOGGLE (TEMP) */}
-          <div className="flex items-center gap-2 mb-6 justify-end opacity-30 hover:opacity-100 transition-opacity">
-            <button 
-              onClick={() => setDevPopulated(false)}
-              disabled={!devPopulated}
-              className={`p-1.5 rounded-full transition-colors ${!devPopulated ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
-              title="Previous State (Empty)"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            </button>
-            <button 
-              onClick={() => setDevPopulated(true)}
-              disabled={devPopulated}
-              className={`p-1.5 rounded-full transition-colors ${devPopulated ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
-              title="Next State (Populated)"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-            </button>
+        <div className="relative px-4 sm:px-6 md:px-10 pt-10 pb-16 sm:pt-16 sm:pb-24 max-w-[1000px] mx-auto w-full flex-1">
+          {/* Desktop Notification Bell */}
+          <div className="hidden md:block absolute top-6 right-6">
+            <NotificationDrawer />
           </div>
+          
+          {/* Removed DEV STATE TOGGLE */}
 
           {active === 'payments' ? (
             <PaymentsEmpty />
@@ -223,7 +229,7 @@ export default function DashboardEmpty() {
                   Milestones
                 </h1>
               </div>
-              <MilestonesTab hasContractor={devPopulated} />
+              <MilestonesTab hasContractor={projects.some(p => p.contractorId != null)} projectId={projects.length > 0 ? projects[0].id : undefined} />
             </>
           ) : active === 'marketplace' ? (
             <Marketplace />
@@ -263,16 +269,24 @@ export default function DashboardEmpty() {
                     </svg>
                   </div>
                   <h3 className="text-[15px] sm:text-[17px] font-semibold text-[#0F172A] mb-2.5 capitalize">You don't have any {active} yet</h3>
-                  <p className="text-[13px] sm:text-[14px] text-[#6B7280] mb-6 text-center max-w-[340px] sm:max-w-[400px] leading-relaxed">
-                    Create your first project to unlock this feature and start managing your {active}.
-                  </p>
-                  <button 
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 bg-[#059669] text-white text-[13px] sm:text-[14px] font-semibold px-5 sm:px-6 py-2.5 sm:py-3 rounded-full hover:bg-[#047857] transition-colors cursor-pointer"
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                    Create Your First Project
-                  </button>
+                  {projects.length === 0 ? (
+                    <>
+                      <p className="text-[13px] sm:text-[14px] text-[#6B7280] mb-6 text-center max-w-[340px] sm:max-w-[400px] leading-relaxed">
+                        Create your first project to unlock this feature and start managing your {active}.
+                      </p>
+                      <button 
+                        onClick={() => setIsModalOpen(true)}
+                        className="flex items-center gap-2 bg-[#059669] text-white text-[13px] sm:text-[14px] font-semibold px-5 sm:px-6 py-2.5 sm:py-3 rounded-full hover:bg-[#047857] transition-colors cursor-pointer"
+                      >
+                        <Plus size={14} strokeWidth={2.5} />
+                        Create Your First Project
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-[13px] sm:text-[14px] text-[#6B7280] mb-6 text-center max-w-[340px] sm:max-w-[400px] leading-relaxed">
+                      You'll see your {active} here once there is activity on your projects.
+                    </p>
+                  )}
                 </div>
               </div>
             </>
@@ -299,8 +313,10 @@ export default function DashboardEmpty() {
           </div>
 
           {/* Your Projects */}
-          <div className={`border border-[#E5E7EB] rounded-2xl ${devPopulated ? 'p-0 border-none' : 'p-6 sm:p-8 md:p-10'} mb-6`}>
-            {!devPopulated ? (
+          <div className={`border border-[#E5E7EB] rounded-2xl ${projects.length > 0 ? 'p-0 border-none' : 'p-6 sm:p-8 md:p-10'} mb-6`}>
+            {isLoadingProjects ? (
+              <div className="flex justify-center py-10"><span className="text-gray-500">Loading projects...</span></div>
+            ) : projects.length === 0 ? (
               <>
                 <h2 className="text-[15px] sm:text-[16px] font-semibold text-[#0F172A] mb-6">Your Projects</h2>
                 <div className="flex flex-col items-center justify-center py-8 sm:py-10">
@@ -330,36 +346,40 @@ export default function DashboardEmpty() {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Mock Populated Project Card */}
-                  <div 
-                    onClick={() => navigate('/dashboard/client/project/1')}
-                    className="group border border-gray-200 rounded-[20px] overflow-hidden hover:border-[#16A34A]/30 hover:shadow-lg transition-all cursor-pointer bg-white"
-                  >
-                    <div className="h-[140px] bg-gray-100 relative overflow-hidden">
-                      <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[12px] font-bold text-[#0F172A] shadow-sm">
-                        Victoria Island
+                  {projects.map((proj) => (
+                    <div 
+                      key={proj.id}
+                      onClick={() => navigate(`/dashboard/client/project/${proj.id}`)}
+                      className="group border border-gray-200 rounded-[20px] overflow-hidden hover:border-[#16A34A]/30 hover:shadow-lg transition-all cursor-pointer bg-white"
+                    >
+                      <div className="h-[140px] bg-gray-100 relative overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&q=80&w=400" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[12px] font-bold text-[#0F172A] shadow-sm">
+                          {proj.city}
+                        </div>
+                        <div className="absolute top-4 right-4 bg-[#DCFCE7] px-2.5 py-1 rounded-full text-[11px] font-bold text-[#16A34A] shadow-sm capitalize">
+                          {proj.status}
+                        </div>
                       </div>
-                      <div className="absolute top-4 right-4 bg-[#DCFCE7] px-2.5 py-1 rounded-full text-[11px] font-bold text-[#16A34A] shadow-sm">
-                        Active
+                      <div className="p-5">
+                        <h3 className="font-bold text-[#0F172A] text-[16px] mb-1">{proj.name}</h3>
+                        <p className="text-[13px] text-gray-500 mb-4 flex items-center gap-1">
+                          <Flag size={12} /> {proj.type === "new_build" ? "New Build" : "Renovation"}
+                        </p>
+                        
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100 mb-3">
+                          <span className="text-[12px] font-medium text-gray-500">Total Budget</span>
+                          <span className="text-[14px] font-bold text-[#0F172A]">₦{parseFloat(proj.budget).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-medium text-gray-500">Contractor</span>
+                          <span className={`text-[12px] font-bold ${proj.contractorId ? 'text-[#059669]' : 'text-[#D97706]'}`}>
+                            {proj.contractorId ? 'Assigned' : 'Awaiting'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div className="p-5">
-                      <h3 className="font-bold text-[#0F172A] text-[16px] mb-1">Luxury Duplex Build</h3>
-                      <p className="text-[13px] text-gray-500 mb-4 flex items-center gap-1">
-                        <Flag size={12} /> 2 of 8 milestones completed
-                      </p>
-                      
-                      <div className="flex-1 h-[6px] bg-[#F1F5F9] rounded-full overflow-hidden mb-4">
-                        <div className="h-full bg-[#16A34A] rounded-full" style={{ width: '25%' }}></div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <span className="text-[12px] font-medium text-gray-500">Total Value</span>
-                        <span className="text-[14px] font-bold text-[#0F172A]">₦25,000,000</span>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </>
             )}
@@ -402,9 +422,9 @@ export default function DashboardEmpty() {
                 <p className="text-[13px] sm:text-[14px] text-[#6B7280] mt-1 mb-4">Here's a quick overview of your account.</p>
                 <div className="flex flex-col">
                   {[
-                    { label: "Active Projects",  value: devPopulated ? "1" : "0",  Icon: Home },
+                    { label: "Active Projects",  value: projects.length.toString(),  Icon: Home },
                     { label: "Pending Payments", value: "₦0", Icon: CreditCard },
-                    { label: "Team Members",     value: devPopulated ? "3" : "0",  Icon: Users },
+                    { label: "Team Members",     value: projects.some(p => p.contractorId) ? "1" : "0",  Icon: Users },
                   ].map(({ label, value, Icon }, i, arr) => (
                     <div key={label} className={`flex items-center justify-between py-3 sm:py-3.5 ${i < arr.length - 1 ? "border-b border-[#F0F0F0]" : ""}`}>
                       <div className="flex items-center gap-2.5">

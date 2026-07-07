@@ -1,11 +1,14 @@
 import { FileText, Home, ChevronRight, UserPlus, Calendar, Clock, DollarSign, UserCircle2 } from "lucide-react";
 import { useOutletContext, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import InviteContractorModal from "../../components/client/InviteContractorModal";
 
 import { getOverviewMilestones, getProjectType } from "../../data/mockData";
 
 export default function ProjectOverview() {
-  const { hasContractor } = useOutletContext<{ hasContractor: boolean }>();
+  const { hasContractor, projectId } = useOutletContext<{ hasContractor: boolean; projectId: string }>();
   const navigate = useNavigate();
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
 
   const projectType = getProjectType();
   const milestonesToRender = getOverviewMilestones(projectType, hasContractor);
@@ -45,7 +48,7 @@ export default function ProjectOverview() {
             {milestonesToRender.map((milestone, idx) => (
               <button 
                 key={idx} 
-                onClick={() => navigate(`/dashboard/client/project/1/milestones/${milestone.id}`)}
+                onClick={() => navigate(`/dashboard/client/project/${projectId}/milestones/${milestone.id}`)}
                 className="flex items-center justify-between py-4 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]/50 transition-colors cursor-pointer text-left w-full rounded-lg px-2 -mx-2"
               >
                 <div className="flex items-center gap-4">
@@ -84,8 +87,11 @@ export default function ProjectOverview() {
             <p className="text-[13.5px] text-[#475569] leading-relaxed mb-6">
               Assign a contractor before milestone amounts can be confirmed and work can begin.
             </p>
-            <button className="w-full bg-[#16A34A] hover:bg-[#15803d] text-white font-semibold text-[14px] py-3 rounded-xl transition-colors shadow-sm mb-4">
-              Hire Contractor
+            <button 
+              onClick={() => setIsInviteOpen(true)}
+              className="w-full bg-[#16A34A] hover:bg-[#15803d] text-white font-semibold text-[14px] py-3 rounded-xl transition-colors shadow-sm mb-4"
+            >
+              Connect Contractor
             </button>
             <div className="text-center">
               <button className="text-[#16A34A] text-[13px] font-semibold hover:underline flex items-center justify-center gap-1.5 w-full">
@@ -143,6 +149,12 @@ export default function ProjectOverview() {
         </div>
 
       </div>
+
+      <InviteContractorModal 
+        isOpen={isInviteOpen} 
+        onClose={() => setIsInviteOpen(false)} 
+        projectId={projectId} 
+      />
     </div>
   );
 }

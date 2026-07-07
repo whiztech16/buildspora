@@ -1,76 +1,34 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle2, CreditCard, Bell, Star, FileText,
-  Briefcase, AlertCircle, Clock,
+  Briefcase, AlertCircle, Clock, Loader2
 } from "lucide-react";
-import PreviewToggle from "../../components/shared/PreviewToggle";
+import { api } from "../../lib/api";
 
-const PREVIEW_STATES = [
-  { label: "New Contractor",    description: "No notifications yet" },
-  { label: "Active Contractor", description: "Notifications present" },
-];
-
-type NotifType = "milestone" | "payment" | "invite" | "review" | "document" | "job" | "alert";
+type NotifType = "milestone" | "payment" | "invite" | "review" | "document" | "job" | "alert" | string;
 
 interface Notification {
-  id: number;
+  id: string;
   type: NotifType;
   title: string;
-  description: string;
-  time: string;
-  read: boolean;
+  body: string;
+  isRead: boolean;
+  createdAt: string;
 }
 
-const SAMPLE_NOTIFS: Notification[] = [
-  {
-    id: 1, type: "milestone", read: false,
-    title: "Milestone Approved",
-    description: "The 'Block Work' milestone on Victoria Island Duplex has been approved. Payment of ₦1,500,000 has been released.",
-    time: "2 hours ago",
-  },
-  {
-    id: 2, type: "payment", read: false,
-    title: "Payment Received",
-    description: "₦1,500,000 has been credited to your Noba virtual account for the Victoria Island Duplex project.",
-    time: "2 hours ago",
-  },
-  {
-    id: 3, type: "invite", read: false,
-    title: "New Job Invitation",
-    description: "You have been invited to quote for 'Office Building (G+4)' in Wuse 2, Abuja. Budget: ₦120,000,000.",
-    time: "Yesterday, 10:05 AM",
-  },
-  {
-    id: 4, type: "review", read: true,
-    title: "Review Received",
-    description: "Chioma Adeyemi left a 5-star review for your work on the Kitchen Fitting – Lekki Phase 1 project.",
-    time: "Yesterday, 08:30 AM",
-  },
-  {
-    id: 5, type: "document", read: true,
-    title: "Document Uploaded",
-    description: "A new document 'Revised BOQ.pdf' has been added to the Parkview Estate Renovation project.",
-    time: "2 days ago",
-  },
-  {
-    id: 6, type: "job", read: true,
-    title: "Quote Accepted",
-    description: "Your quote for 'Tiling & Flooring Work' in Kano has been accepted. You can now begin the project.",
-    time: "3 days ago",
-  },
-  {
-    id: 7, type: "milestone", read: true,
-    title: "Milestone Due Soon",
-    description: "The 'Roofing Completion' milestone for Greenfield Court is due in 3 days. Ensure timely delivery.",
-    time: "3 days ago",
-  },
-  {
-    id: 8, type: "alert", read: true,
-    title: "Profile Incomplete",
-    description: "Your contractor profile is missing your trade license. Complete your profile to improve job visibility.",
-    time: "5 days ago",
-  },
-];
+const formatTimeAgo = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+};
 
 const TYPE_META: Record<NotifType, { Icon: React.ElementType; bg: string; color: string }> = {
   milestone: { Icon: CheckCircle2,  bg: "#F0FDF4", color: "#059669" },
@@ -83,31 +41,66 @@ const TYPE_META: Record<NotifType, { Icon: React.ElementType; bg: string; color:
 };
 
 export default function ContractorUpdates() {
-  const [previewIdx, setPreviewIdx] = useState(0);
   const [tab, setTab] = useState<"all" | "unread">("all");
-  const [notifs, setNotifs] = useState<Notification[]>(SAMPLE_NOTIFS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // In production: notifs come from the API
-  const displayedNotifs = previewIdx === 0 ? [] : notifs;
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get<{ success: boolean; notifications: Notification[] }>("/api/notifications");
+      if (res.success && res.notifications) {
+        setNotifications(res.notifications);
+      }
+    } catch (err) {
+      console.error("Failed to fetch notifications", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const unreadCount = displayedNotifs.filter((n) => !n.read).length;
-  const displayed = tab === "unread" ? displayedNotifs.filter((n) => !n.read) : displayedNotifs;
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
-  function markAllRead() {
-    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
-  }
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const displayed = tab === "unread" ? notifications.filter((n) => !n.isRead) : notifications;
 
-  function markRead(id: number) {
-    setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+  const markAllRead = async () => {
+    if (unreadCount === 0) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await api.put("/api/notifications/read-all", {});
+    } catch {
+      fetchNotifications();
+    }
+  };
+
+  const markRead = async (id: string) => {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif || notif.isRead) return;
+
+    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n));
+    try {
+      await api.put(`/api/notifications/${id}/read`, {});
+    } catch {
+      fetchNotifications();
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="animate-spin text-[#16A34A]" size={32} />
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col w-full max-w-[720px]" style={{ fontFamily: "'Inter', sans-serif" }}>
 
-      {/* Preview toggle */}
-      <PreviewToggle states={PREVIEW_STATES} current={previewIdx} onChange={setPreviewIdx} />
-
-      {displayedNotifs.length === 0 ? (
+      {notifications.length === 0 ? (
         /* ── Empty state ── */
         <div className="bg-white border border-[#E2E8F0] rounded-[4px] flex flex-col items-center justify-center text-center py-20 px-8">
           <div className="w-14 h-14 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-4">
@@ -173,13 +166,13 @@ export default function ContractorUpdates() {
       ) : (
         <div className="flex flex-col border border-[#E2E8F0] rounded-[4px] bg-white overflow-hidden">
           {displayed.map((notif) => {
-            const meta = TYPE_META[notif.type];
+            const meta = TYPE_META[notif.type as NotifType] || TYPE_META.alert;
             return (
               <button
                 key={notif.id}
                 onClick={() => markRead(notif.id)}
                 className={`w-full text-left flex items-start gap-4 px-5 py-4 border-b border-[#F8FAFC] last:border-none transition-colors
-                  ${!notif.read ? "bg-[#FAFFFE]" : "bg-white"} hover:bg-[#F8FAFC]`}
+                  ${!notif.isRead ? "bg-[#FAFFFE]" : "bg-white"} hover:bg-[#F8FAFC]`}
               >
                 {/* Icon */}
                 <div
@@ -191,18 +184,18 @@ export default function ContractorUpdates() {
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <p className={`text-[13.5px] leading-snug mb-0.5 ${!notif.read ? "font-bold text-[#0F172A]" : "font-semibold text-[#0F172A]"}`}>
+                  <p className={`text-[13.5px] leading-snug mb-0.5 ${!notif.isRead ? "font-bold text-[#0F172A]" : "font-semibold text-[#0F172A]"}`}>
                     {notif.title}
                   </p>
                   <p className="text-[13px] text-[#475569] leading-relaxed">
-                    {notif.description}
+                    {notif.body}
                   </p>
-                  <p className="text-[12px] text-[#94A3B8] mt-1.5">{notif.time}</p>
+                  <p className="text-[12px] text-[#94A3B8] mt-1.5">{formatTimeAgo(notif.createdAt)}</p>
                 </div>
 
                 {/* Unread dot */}
                 <div className="shrink-0 pt-1.5">
-                  {!notif.read ? (
+                  {!notif.isRead ? (
                     <span className="w-2 h-2 rounded-full bg-[#059669] block" />
                   ) : (
                     <span className="w-2 h-2 block" />

@@ -1,17 +1,21 @@
-/* eslint-disable react-refresh/only-export-components */
 import { useNavigate } from "react-router-dom";
 import {
   Home, Briefcase, CreditCard, Bell,
   Settings, LogOut, Menu, X, ChevronDown,
+  Camera, Activity as ActivityIcon
 } from "lucide-react";
 import { ClipboardList } from "lucide-react";
-
-import { Flag, Users } from "lucide-react"; // I'll add Flag and Users to the imports
+import { useAuth } from "../../context/AuthContext";
+import { Flag, Users } from "lucide-react";
+import { useState, useEffect } from "react";
+import { api } from "../../lib/api";
 
 export const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", Icon: Home },
   { id: "projects",  label: "Projects",  Icon: ClipboardList },
   { id: "milestones",label: "Milestones",Icon: Flag },
+  { id: "submissions",label: "Submissions",Icon: Camera },
+  { id: "activity",  label: "Activity",  Icon: ActivityIcon },
   { id: "updates",   label: "Updates",   Icon: Bell },
   { id: "payments",  label: "Payments",  Icon: CreditCard },
   { id: "suppliers", label: "Suppliers", Icon: Briefcase }, // using Briefcase for Suppliers
@@ -23,18 +27,13 @@ interface ContractorSidebarProps {
   active: string;
   onNavigate: (id: string) => void;
 
-  // Desktop collapse
+// Desktop drawer
   desktopOpen: boolean;
   onToggleDesktop: () => void;
 
   // Mobile drawer
   mobileOpen: boolean;
   onCloseMobile: () => void;
-
-  // User info (will come from auth context later)
-  userName?: string;
-  userInitials?: string;
-  userRole?: string;
 }
 
 const LOGO = (
@@ -51,11 +50,26 @@ export default function ContractorSidebar({
   onToggleDesktop,
   mobileOpen,
   onCloseMobile,
-  userName = "Emeka Okafor",
-  userInitials = "EO",
-  userRole = "Contractor",
 }: ContractorSidebarProps) {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/signin");
+  };
+  const userName = user?.name || "Contractor User";
+  const userInitials = user?.initials || userName.charAt(0).toUpperCase();
+  const userRole = "Contractor";
+
+  // Fetch avatar URL from profile
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  useEffect(() => {
+    api.get<{ success: boolean; profile: { avatarUrl?: string | null } | null }>('/api/user/me')
+      .then(res => { setAvatarUrl(res.profile?.avatarUrl ?? null); })
+      .catch(() => {});
+  }, []);
+
 
   const renderNavItems = (isMobile: boolean = false) => (
     <>
@@ -91,10 +105,17 @@ export default function ContractorSidebar({
   const renderUserFooter = (isMobile: boolean = false) => (
     <div className={`border-t border-[#F1F5F9] flex flex-col gap-2 ${isMobile ? "px-3 pb-8 pt-4" : "px-3 pb-6 pt-2"}`}>
       {(isMobile || desktopOpen) ? (
-        <div className={`flex items-center ${isMobile ? "gap-3 px-3 mb-2" : "justify-between p-2 rounded-xl hover:bg-[#F9FAFB] cursor-pointer transition-colors mb-2"}`}>
+        <div 
+          className={`flex items-center ${isMobile ? "gap-3 px-3 mb-2" : "justify-between p-2 rounded-xl hover:bg-[#F9FAFB] cursor-pointer transition-colors mb-2"}`}
+          onClick={() => navigate('/dashboard/contractor/profile-setup')}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#0F172A] text-white flex items-center justify-center text-[14px] font-bold shrink-0">
-              {userInitials}
+            <div className="w-10 h-10 rounded-full bg-[#0F172A] text-white flex items-center justify-center text-[14px] font-bold shrink-0 overflow-hidden">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={userInitials} className="w-full h-full object-cover" />
+              ) : (
+                userInitials
+              )}
             </div>
             <div className="flex flex-col">
               <span className="text-[14px] font-bold text-[#0F172A] leading-tight">{userName}</span>
@@ -104,13 +125,21 @@ export default function ContractorSidebar({
           {!isMobile && <ChevronDown size={16} className="text-[#64748B]" />}
         </div>
       ) : (
-        <div className="w-10 h-10 rounded-full bg-[#0F172A] text-white flex items-center justify-center text-[14px] font-bold shrink-0 mx-auto mb-2 cursor-pointer">
-          {userInitials}
+        <div 
+          className="w-10 h-10 rounded-full bg-[#0F172A] text-white flex items-center justify-center text-[14px] font-bold shrink-0 mx-auto mb-2 cursor-pointer hover:bg-gray-800 transition-colors overflow-hidden"
+          onClick={() => navigate('/dashboard/contractor/profile-setup')}
+          title="Update Profile"
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={userInitials} className="w-full h-full object-cover" />
+          ) : (
+            userInitials
+          )}
         </div>
       )}
 
       <button
-        onClick={() => navigate("/")}
+        onClick={handleLogout}
         title={!isMobile && !desktopOpen ? "Log out" : undefined}
         className={`
           flex items-center rounded-xl text-[13.5px] font-medium
@@ -145,8 +174,9 @@ export default function ContractorSidebar({
           </button>
         </div>
 
-        <nav className="flex flex-col gap-1 px-3 py-2 flex-1 overflow-hidden">
+        <nav className="flex flex-col gap-1 px-3 py-2 flex-1 overflow-y-auto">
           {renderNavItems()}
+
         </nav>
 
         {renderUserFooter()}

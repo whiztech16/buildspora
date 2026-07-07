@@ -1,5 +1,6 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import { logout as supabaseLogout } from "../lib/supabase";
 
 export type UserRole = "client" | "contractor" | "supplier";
 
@@ -10,14 +11,16 @@ export interface AuthUser {
   role: UserRole;
   initials: string;
   isFirstLogin: boolean;
+  hasPin?: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   login: (user: AuthUser, token: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearFirstLogin: () => void;
+  updateUser: (updates: Partial<AuthUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,7 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
   }, []);
 
-  const logout = () => {
+  const logout = async () => {
+    // Kill the Supabase server-side session first
+    await supabaseLogout();
+    // Then clear local state & storage
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
@@ -57,8 +63,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   };
 
+  const updateUser = useCallback((updates: Partial<AuthUser>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ user, isLoading, login, logout, clearFirstLogin }),
+    () => ({ user, isLoading, login, logout, clearFirstLogin, updateUser }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, isLoading]
   );

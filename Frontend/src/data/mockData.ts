@@ -1,3 +1,4 @@
+import type { ElementType } from "react";
 import { 
   CheckSquare, FileSearch, Building2, Hammer, Home, Zap, 
   FileText, Network, Landmark, Grid, Brush, Flag,
@@ -23,14 +24,14 @@ export interface OverviewMilestone {
   name: string;
   amount: string;
   status: MilestoneStatus;
-  icon: React.ElementType;
+  icon: ElementType;
 }
 
 export interface DetailMilestone {
   name: string;
   amount: string;
   status: MilestoneStatus;
-  icon: React.ElementType;
+  icon: ElementType;
 }
 
 export interface DetailStep {

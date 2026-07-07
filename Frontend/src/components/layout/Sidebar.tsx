@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
   Home, Flag, CreditCard, ShoppingBag, Users,
   FileText, Truck, User, Settings, LogOut, Menu, X
@@ -34,6 +35,12 @@ export default function ClientSidebar({
   setDesktopOpen
 }: ClientSidebarProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/signin");
+  };
 
   const handleNavClick = (tabId: string) => {
     setActive(tabId);
@@ -95,7 +102,7 @@ export default function ClientSidebar({
 
         <div className="px-3 pb-6 pt-2">
           <button
-            onClick={() => navigate("/")}
+            onClick={handleLogout}
             title={!desktopOpen ? "Log out" : undefined}
             className={`
               flex items-center rounded-xl text-[13.5px] font-medium
@@ -157,7 +164,7 @@ export default function ClientSidebar({
           </nav>
           <div className="px-3 pb-6 mt-4">
             <button
-              onClick={() => navigate("/")}
+              onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] font-medium text-[#0F172A] hover:bg-[#F9FAFB] transition-colors cursor-pointer"
             >
               <LogOut size={18} strokeWidth={1.8} color="#0F172A" className="shrink-0" />

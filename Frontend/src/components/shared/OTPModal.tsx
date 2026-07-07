@@ -37,19 +37,27 @@ export default function OTPModal({
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
+  const [endTime, setEndTime] = useState<number | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setTimeout(() => setTimeLeft(600), 0);
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) { clearInterval(timer); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+    if (!isOpen) {
+      setEndTime(null);
+      return;
+    }
+    setEndTime(Date.now() + 600 * 1000);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!endTime) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
+      setTimeLeft(remaining);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [endTime]);
 
   useEffect(() => {
     if (isOpen) {
@@ -119,7 +127,7 @@ export default function OTPModal({
     } catch {
       // fail silently
     }
-    setTimeLeft(600);
+    setEndTime(Date.now() + 600 * 1000);
     setResent(true);
     setResending(false);
     setTimeout(() => setResent(false), 3000);

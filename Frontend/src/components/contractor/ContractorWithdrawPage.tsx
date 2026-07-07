@@ -1,36 +1,37 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   ChevronLeft, Search, ChevronDown, Check, X,
-  AlertCircle, ArrowRight, CheckCircle2, Copy,
+  AlertCircle, ArrowRight, CheckCircle2, Copy, Loader2,
 } from "lucide-react";
-import OTPModal from "../shared/OTPModal";
+import PinModal from "../shared/PinModal";
+import ForgotPinModal from "../shared/ForgotPinModal";
+import SetPinModal from "../shared/SetPinModal";
+import { api } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { useBanks, type BankEntry } from "../../hooks/useBanks";
 
 interface ContractorWithdrawPageProps {
   availableBalance?: string;
+  rawBalance?: number;
   email?: string;
   onBack: () => void;
+  onSuccess?: () => void;
 }
 
 type Step = "form" | "success" | "error";
 
-const NIGERIAN_BANKS = [
-  "Access Bank", "Citibank Nigeria", "Ecobank Nigeria", "Fidelity Bank",
-  "First Bank of Nigeria", "First City Monument Bank (FCMB)",
-  "Guaranty Trust Bank (GTBank)", "Heritage Bank", "Jaiz Bank",
-  "Keystone Bank", "Kuda Bank", "Moniepoint Microfinance Bank",
-  "OPay Digital Services", "PalmPay", "Polaris Bank", "Providus Bank",
-  "Stanbic IBTC Bank", "Standard Chartered Bank", "Sterling Bank",
-  "SunTrust Bank", "Titan Trust Bank", "Union Bank of Nigeria",
-  "United Bank for Africa (UBA)", "Unity Bank", "VFD Microfinance Bank",
-  "Wema Bank", "Zenith Bank",
-];
-
-function BankDropdown({ value, onChange, hasError }: { value: string; onChange: (v: string) => void; hasError: boolean }) {
+function BankDropdown({ value, onChange, hasError, banks, isLoadingBanks }: {
+  value: string;
+  onChange: (name: string, code: string) => void;
+  hasError: boolean;
+  banks: BankEntry[];
+  isLoadingBanks: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const filtered = NIGERIAN_BANKS.filter((b) => b.toLowerCase().includes(search.toLowerCase()));
+  const filtered = banks.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()));
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -51,7 +52,7 @@ function BankDropdown({ value, onChange, hasError }: { value: string; onChange: 
           ${hasError && !value ? "border-red-400" : open ? "border-[#059669] ring-2 ring-[#059669]/10" : "border-[#E5E7EB] hover:border-[#CBD5E1]"}
           ${value ? "text-[#0F172A] font-medium" : "text-[#9CA3AF]"}`}
       >
-        <span>{value || "Select a bank"}</span>
+        <span>{value || (isLoadingBanks ? "Loading banks…" : "Select a bank")}</span>
         <ChevronDown size={16} className={`text-[#94A3B8] transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
@@ -70,19 +71,23 @@ function BankDropdown({ value, onChange, hasError }: { value: string; onChange: 
             {search && <button onClick={() => setSearch("")} className="text-[#94A3B8] hover:text-[#64748B]"><X size={13} /></button>}
           </div>
           <div className="max-h-[220px] overflow-y-auto py-1">
-            {filtered.length === 0 ? (
+            {isLoadingBanks ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-[#94A3B8] text-[13px]">
+                <Loader2 size={14} className="animate-spin" /> Loading banks…
+              </div>
+            ) : filtered.length === 0 ? (
               <p className="text-[13px] text-[#94A3B8] text-center py-4">No bank found</p>
             ) : (
               filtered.map((bank) => (
                 <button
-                  key={bank}
+                  key={bank.code}
                   type="button"
-                  onClick={() => { onChange(bank); setOpen(false); setSearch(""); }}
+                  onClick={() => { onChange(bank.name, bank.code); setOpen(false); setSearch(""); }}
                   className={`w-full flex items-center justify-between px-4 py-2.5 text-[13.5px] text-left transition-colors
-                    ${value === bank ? "bg-[#F0FDF4] text-[#059669] font-semibold" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}
+                    ${value === bank.name ? "bg-[#F0FDF4] text-[#059669] font-semibold" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}
                 >
-                  {bank}
-                  {value === bank && <Check size={14} className="text-[#059669]" />}
+                  {bank.name}
+                  {value === bank.name && <Check size={14} className="text-[#059669]" />}
                 </button>
               ))
             )}
@@ -94,53 +99,104 @@ function BankDropdown({ value, onChange, hasError }: { value: string; onChange: 
 }
 
 export default function ContractorWithdrawPage({
-  availableBalance = "₦4,750,000",
-  email = "emeka@gmail.com",
+  availableBalance = "₦0.00",
+  rawBalance = 0,
   onBack,
+  onSuccess,
 }: ContractorWithdrawPageProps) {
+  const { banks, isLoading: isLoadingBanks } = useBanks();
+  const { user, updateUser } = useAuth();
   const [step, setStep] = useState<Step>("form");
-  const [otpOpen, setOtpOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [forgotPinOpen, setForgotPinOpen] = useState(false);
+  const [setPinModalOpen, setSetPinModalOpen] = useState(false);
 
-  const [bank, setBank] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankCode, setBankCode] = useState("");
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [formError, setFormError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [txRef, setTxRef] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Account name lookup state
+  const [isResolving, setIsResolving] = useState(false);
+  const [resolveError, setResolveError] = useState("");
+
+  // Debounced account name lookup whenever accountNumber (10 digits) + bankCode are set
+  const resolveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lookupAccountName = useCallback(async (accNum: string, bCode: string) => {
+    if (accNum.length !== 10 || !bCode) return;
+    setIsResolving(true);
+    setResolveError("");
+    setAccountName("");
+    try {
+      const res = await api.post<{ success: boolean; accountName: string }>(
+        "/api/payments/resolve-account",
+        { accountNumber: accNum, bankCode: bCode }
+      );
+      setAccountName(res.accountName);
+    } catch (err: any) {
+      setResolveError(err.message || "Could not resolve account name.");
+    } finally {
+      setIsResolving(false);
+    }
+  }, []);
+
+  // Trigger lookup when accountNumber reaches 10 digits OR when bank changes
+  useEffect(() => {
+    if (resolveTimeoutRef.current) clearTimeout(resolveTimeoutRef.current);
+    if (accountNumber.length === 10 && bankCode) {
+      resolveTimeoutRef.current = setTimeout(() => lookupAccountName(accountNumber, bankCode), 400);
+    } else {
+      setAccountName("");
+      setResolveError("");
+    }
+  }, [accountNumber, bankCode, lookupAccountName]);
+
   function handleFormSubmit() {
-    if (!bank) { setFormError("Please select a bank."); return; }
-    if (!accountName.trim()) { setFormError("Please enter the account name."); return; }
-    if (!/^\d{10}$/.test(accountNumber.replace(/\s/g, ""))) { setFormError("Please enter a valid 10-digit account number."); return; }
+    if (!bankName) { setFormError("Please select a bank."); return; }
+    if (accountNumber.length !== 10) { setFormError("Please enter a valid 10-digit account number."); return; }
+    if (!accountName) { setFormError("Account name could not be resolved. Please check the account number and bank."); return; }
     const num = parseFloat(amount.replace(/[^0-9.]/g, ""));
     if (!amount || isNaN(num) || num <= 0) { setFormError("Please enter a valid amount."); return; }
-
-    // Balance check — strip currency symbol and commas then compare
-    const balanceNum = parseFloat(availableBalance.replace(/[^0-9.]/g, ""));
-    if (!isNaN(balanceNum) && num > balanceNum) {
-      setFormError(`Insufficient balance. Your available balance is ${availableBalance}.`);
-      return;
-    }
+    if (num > rawBalance) { setFormError(`Insufficient balance. Your available balance is ${availableBalance}.`); return; }
 
     setFormError("");
-    setOtpOpen(true);
+    if (user?.hasPin) {
+      setPinOpen(true);
+    } else {
+      setSetPinModalOpen(true);
+    }
   }
 
-  async function handleOtpVerify(code: string) {
-    await new Promise((r) => setTimeout(r, 1500));
-    if (code === "000000") {
-      setOtpOpen(false);
-      setErrorMessage("Transaction failed. Please check your details and try again.");
-      setStep("error");
-      throw new Error("Transaction failed");
-    }
-    setOtpOpen(false);
+  async function handlePinVerify(code: string) {
+    const num = parseFloat(amount.replace(/[^0-9.]/g, ""));
+    const res = await api.post<{ success: boolean; message?: string; error?: string }>(
+      "/api/payments/withdraw",
+      {
+        amount: num,
+        pin: code,
+        accountNumber,
+        accountName,
+        bankCode,
+        bankName,
+        narration: "BuildSpora withdrawal",
+      }
+    );
+    if (!res.success) throw new Error(res.error || "Withdrawal failed.");
+    const ref = `BSP-${Date.now()}`;
+    setTxRef(ref);
+    setPinOpen(false);
     setStep("success");
+    onSuccess?.();
   }
 
   function handleCopyRef() {
-    navigator.clipboard.writeText("BSP-" + Date.now()).catch(() => {});
+    navigator.clipboard.writeText(txRef).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -151,8 +207,9 @@ export default function ContractorWithdrawPage({
     <>
       <div className="flex flex-col w-full max-w-[560px]" style={{ fontFamily: "'Inter', sans-serif" }}>
 
-        {/* ── Page header ── */}
-        <div className="flex items-center gap-3 mb-8">
+        {/* Page header */}
+        {!pinOpen && !forgotPinOpen && (
+          <div className="flex items-center gap-3 mb-8">
           <button
             onClick={onBack}
             className="flex items-center justify-center w-9 h-9 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] transition-colors text-[#0F172A]"
@@ -164,9 +221,10 @@ export default function ContractorWithdrawPage({
             <p className="text-[13px] text-[#64748B] mt-0.5">Transfer your earnings to your bank account</p>
           </div>
         </div>
+        )}
 
-        {/* ── FORM STEP ── */}
-        {step === "form" && (
+        {/* FORM STEP */}
+        {!pinOpen && !forgotPinOpen && step === "form" && (
           <div className="flex flex-col gap-6">
 
             {/* Balance card */}
@@ -182,21 +240,11 @@ export default function ContractorWithdrawPage({
               <div className="flex flex-col gap-1.5">
                 <label className="text-[13px] font-semibold text-[#374151]">Bank</label>
                 <BankDropdown
-                  value={bank}
-                  onChange={(v) => { setBank(v); setFormError(""); }}
+                  value={bankName}
+                  onChange={(name, code) => { setBankName(name); setBankCode(code); setFormError(""); }}
                   hasError={!!formError}
-                />
-              </div>
-
-              {/* Account Name */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[13px] font-semibold text-[#374151]">Account Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Emeka Okafor"
-                  value={accountName}
-                  onChange={(e) => { setAccountName(e.target.value); setFormError(""); }}
-                  className="border border-[#E5E7EB] rounded-xl px-4 py-3 text-[14px] text-[#0F172A] placeholder-[#9CA3AF] outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all"
+                  banks={banks}
+                  isLoadingBanks={isLoadingBanks}
                 />
               </div>
 
@@ -212,6 +260,25 @@ export default function ContractorWithdrawPage({
                   onChange={(e) => { setAccountNumber(e.target.value.replace(/\D/g, "")); setFormError(""); }}
                   className="border border-[#E5E7EB] rounded-xl px-4 py-3 text-[14px] text-[#0F172A] placeholder-[#9CA3AF] outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all tracking-widest"
                 />
+              </div>
+
+              {/* Account Name — auto-resolved */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[13px] font-semibold text-[#374151]">Account Name</label>
+                <div className="relative">
+                  <div className={`border rounded-xl px-4 py-3 text-[14px] min-h-[48px] flex items-center gap-2
+                    ${accountName ? "border-[#059669] bg-[#F0FDF4]" : "border-[#E5E7EB] bg-[#F8FAFC]"}`}>
+                    {isResolving ? (
+                      <><Loader2 size={14} className="animate-spin text-[#64748B]" /><span className="text-[#94A3B8]">Resolving…</span></>
+                    ) : accountName ? (
+                      <><Check size={14} className="text-[#059669] shrink-0" /><span className="font-semibold text-[#0F172A]">{accountName}</span></>
+                    ) : resolveError ? (
+                      <><AlertCircle size={14} className="text-red-500 shrink-0" /><span className="text-red-500 text-[13px]">{resolveError}</span></>
+                    ) : (
+                      <span className="text-[#9CA3AF]">Auto-filled after you enter account number & bank</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Amount */}
@@ -238,24 +305,21 @@ export default function ContractorWithdrawPage({
             </div>
 
             <div className="flex items-center justify-between pt-2">
-              <button
-                type="button"
-                onClick={onBack}
-                className="text-[13px] text-[#64748B] hover:text-[#0F172A] transition-colors"
-              >
+              <button type="button" onClick={onBack} className="text-[13px] text-[#64748B] hover:text-[#0F172A] transition-colors">
                 Cancel
               </button>
               <button
                 onClick={handleFormSubmit}
-                className="flex items-center gap-2 bg-[#059669] text-white rounded-xl px-6 py-2.5 text-[13.5px] font-semibold hover:bg-[#047857] transition-colors"
+                disabled={isResolving}
+                className="flex items-center gap-2 bg-[#059669] text-white rounded-xl px-6 py-2.5 text-[13.5px] font-semibold hover:bg-[#047857] transition-colors disabled:opacity-50"
               >
-                Verify & Pay <ArrowRight size={15} />
+                Verify &amp; Pay <ArrowRight size={15} />
               </button>
             </div>
           </div>
         )}
 
-        {/* ── SUCCESS STEP ── */}
+        {/* SUCCESS STEP */}
         {step === "success" && (
           <div className="border border-[#E2E8F0] rounded-[4px] bg-white p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-full bg-[#F0FDF4] flex items-center justify-center mb-5">
@@ -267,22 +331,10 @@ export default function ContractorWithdrawPage({
             </p>
 
             <div className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-5 py-4 flex flex-col gap-3 mb-6 text-left">
-              <div className="flex justify-between text-[13px]">
-                <span className="text-[#64748B]">Bank</span>
-                <span className="font-semibold text-[#0F172A]">{bank}</span>
-              </div>
-              <div className="flex justify-between text-[13px]">
-                <span className="text-[#64748B]">Account Name</span>
-                <span className="font-semibold text-[#0F172A]">{accountName}</span>
-              </div>
-              <div className="flex justify-between text-[13px]">
-                <span className="text-[#64748B]">Account Number</span>
-                <span className="font-semibold text-[#0F172A] tracking-wider">{accountNumber}</span>
-              </div>
-              <div className="flex justify-between text-[13px] border-t border-[#E2E8F0] pt-3 mt-0.5">
-                <span className="text-[#64748B]">Amount</span>
-                <span className="font-bold text-[#059669]">₦{numericAmount.toLocaleString()}</span>
-              </div>
+              <div className="flex justify-between text-[13px]"><span className="text-[#64748B]">Bank</span><span className="font-semibold text-[#0F172A]">{bankName}</span></div>
+              <div className="flex justify-between text-[13px]"><span className="text-[#64748B]">Account Name</span><span className="font-semibold text-[#0F172A]">{accountName}</span></div>
+              <div className="flex justify-between text-[13px]"><span className="text-[#64748B]">Account Number</span><span className="font-semibold text-[#0F172A] tracking-wider">{accountNumber}</span></div>
+              <div className="flex justify-between text-[13px] border-t border-[#E2E8F0] pt-3 mt-0.5"><span className="text-[#64748B]">Amount</span><span className="font-bold text-[#059669]">₦{numericAmount.toLocaleString()}</span></div>
               <div className="flex justify-between items-center text-[13px]">
                 <span className="text-[#64748B]">Reference</span>
                 <button onClick={handleCopyRef} className="flex items-center gap-1.5 font-medium text-[#0F172A] hover:text-[#059669] transition-colors">
@@ -292,16 +344,13 @@ export default function ContractorWithdrawPage({
             </div>
 
             <p className="text-[12.5px] text-[#94A3B8] mb-6">Funds typically arrive within a few minutes.</p>
-            <button
-              onClick={onBack}
-              className="w-full bg-[#059669] text-white rounded-xl py-3.5 text-[14px] font-semibold hover:bg-[#047857] transition-colors"
-            >
+            <button onClick={onBack} className="w-full bg-[#059669] text-white rounded-xl py-3.5 text-[14px] font-semibold hover:bg-[#047857] transition-colors">
               Back to Payments
             </button>
           </div>
         )}
 
-        {/* ── ERROR STEP ── */}
+        {/* ERROR STEP */}
         {step === "error" && (
           <div className="border border-[#E2E8F0] rounded-[4px] bg-white p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-5">
@@ -311,26 +360,39 @@ export default function ContractorWithdrawPage({
             <p className="text-[13.5px] text-[#64748B] mb-8 max-w-[320px] leading-relaxed">
               {errorMessage || "Something went wrong. Please check your details and try again."}
             </p>
-            <button
-              onClick={() => { setStep("form"); setErrorMessage(""); }}
-              className="w-full bg-[#0F172A] text-white rounded-xl py-3.5 text-[14px] font-semibold hover:bg-black transition-colors mb-3"
-            >
+            <button onClick={() => { setStep("form"); setErrorMessage(""); }} className="w-full bg-[#0F172A] text-white rounded-xl py-3.5 text-[14px] font-semibold hover:bg-black transition-colors mb-3">
               Try Again
             </button>
-            <button onClick={onBack} className="w-full text-[#64748B] text-[14px] font-medium hover:underline">
-              Back to Payments
-            </button>
+            <button onClick={onBack} className="w-full text-[#64748B] text-[14px] font-medium hover:underline">Back to Payments</button>
           </div>
         )}
       </div>
 
-      {/* Shared OTP Modal */}
-      <OTPModal
-        isOpen={otpOpen}
-        onClose={() => setOtpOpen(false)}
-        onVerify={handleOtpVerify}
-        email={email}
-        actionLabel="Withdraw"
+      <PinModal
+        isOpen={pinOpen}
+        onClose={() => setPinOpen(false)}
+        onVerify={handlePinVerify}
+        actionLabel="Confirm Withdrawal"
+        onForgotPin={() => {
+          setPinOpen(false);
+          setForgotPinOpen(true);
+        }}
+      />
+
+      <ForgotPinModal
+        isOpen={forgotPinOpen}
+        onClose={() => setForgotPinOpen(false)}
+        onSuccess={() => setPinOpen(true)}
+      />
+
+      <SetPinModal 
+        isOpen={setPinModalOpen} 
+        onClose={() => setSetPinModalOpen(false)} 
+        onSuccess={() => {
+          setSetPinModalOpen(false);
+          updateUser({ hasPin: true });
+          setPinOpen(true);
+        }}
       />
     </>
   );

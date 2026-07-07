@@ -3,14 +3,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 const FONT = "'Inter', sans-serif";
 
 interface State {
-  label: string;
-  description: string;
+  readonly label: string;
+  readonly description: string;
 }
 
 interface PreviewToggleProps {
-  states: State[];
-  current: number;
-  onChange: (index: number) => void;
+  readonly states: State[];
+  readonly current: number;
+  readonly onChange: (index: number) => void;
 }
 
 /**
@@ -35,17 +35,21 @@ export default function PreviewToggle({ states, current, onChange }: PreviewTogg
 
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={prev}
           className="w-7 h-7 rounded-md flex items-center justify-center text-[#64748B] hover:bg-[#E2E8F0] transition-colors"
           title="Previous state"
+          aria-label="Previous state"
         >
           <ChevronLeft size={15} />
         </button>
         <div className="flex items-center gap-1 px-1">
-          {states.map((_, i) => (
+          {states.map((state, i) => (
             <button
-              key={i}
+              key={state.label}
+              type="button"
               onClick={() => onChange(i)}
+              aria-label={`Go to ${state.label}`}
               className={`w-1.5 h-1.5 rounded-full transition-colors ${
                 i === current ? "bg-[#059669]" : "bg-[#CBD5E1] hover:bg-[#94A3B8]"
               }`}
@@ -53,9 +57,11 @@ export default function PreviewToggle({ states, current, onChange }: PreviewTogg
           ))}
         </div>
         <button
+          type="button"
           onClick={next}
           className="w-7 h-7 rounded-md flex items-center justify-center text-[#64748B] hover:bg-[#E2E8F0] transition-colors"
           title="Next state"
+          aria-label="Next state"
         >
           <ChevronRight size={15} />
         </button>

@@ -4,17 +4,19 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import CreateProjectModal from "../../components/client/CreateProjectModal";
 import ClientSidebar from "../../components/layout/Sidebar";
 import { ArrowLeft, MapPin, Copy, Settings, ChevronDown } from "lucide-react";
+import { useEffect } from "react";
+import { api } from "../../lib/api";
 
 const FONT = "'Inter', sans-serif";
-
-import { PROJECT_DATA } from "../../data/mockData";
 
 export default function ProjectDetail() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathParts = location.pathname.split('/');
+  const projectIdIndex = pathParts.indexOf('project') + 1;
+  const projectId = pathParts[projectIdIndex];
   const currentRoute = pathParts[pathParts.length - 1];
-  const activeTab = currentRoute === '1' ? 'overview' : currentRoute;
+  const activeTab = currentRoute === projectId ? 'overview' : currentRoute;
   const sidebarActiveTab = "projects";
   
   const isSubPage = (pathParts.includes('milestones') && pathParts[pathParts.length - 1] !== 'milestones') ||
@@ -24,9 +26,46 @@ export default function ProjectDetail() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [hasContractor, setHasContractor] = useState(false);
+  const [project, setProject] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadProject() {
+      if (!projectId) return;
+      try {
+        const res = await api.get<{ success: boolean; project: any }>(`/api/projects/${projectId}`);
+        if (res.success) {
+          setProject(res.project);
+        }
+      } catch (err) {
+        console.error("Failed to fetch project details:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadProject();
+  }, [projectId]);
+
+  const hasContractor = project?.contractorId != null;
 
   const desktopMarginClass = desktopOpen ? "md:ml-[240px]" : "md:ml-[68px]";
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <span className="text-gray-500">Loading project...</span>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <span className="text-gray-500">Project not found.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white" style={{ fontFamily: FONT }}>
       
@@ -63,35 +102,6 @@ export default function ProjectDetail() {
         {/* Content Wrapper */}
         <div className="px-4 sm:px-6 md:px-10 pt-8 pb-16 sm:pt-12 sm:pb-24 max-w-[1100px] mx-auto w-full flex-1">
           
-          {/* DEV STATE TOGGLE (TEMP) */}
-          <div className="flex items-center gap-2 mb-6 justify-end opacity-30 hover:opacity-100 transition-opacity">
-            <button 
-              onClick={() => {
-                if (hasContractor) {
-                  setHasContractor(false);
-                } else {
-                  navigate('/dashboard/client', { state: { activeTab: activeTab === 'overview' ? 'projects' : activeTab } });
-                }
-              }}
-              className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-              title="Previous State"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            </button>
-            <button 
-              onClick={() => {
-                if (!hasContractor) {
-                  setHasContractor(true);
-                }
-              }}
-              disabled={hasContractor}
-              className={`p-1.5 rounded-full transition-colors ${hasContractor ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
-              title="Next State"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-            </button>
-          </div>
-
           {/* Header */}
           {!isSubPage && (
             <div className="flex flex-col gap-6 mb-8">
@@ -124,21 +134,25 @@ export default function ProjectDetail() {
                 <div className="flex-1 flex flex-col justify-center">
                   <div className="flex items-center gap-3 mb-2">
                     <h1 className="text-[24px] sm:text-[28px] font-bold text-[#0F172A] leading-tight">
-                      {PROJECT_DATA.location} {PROJECT_DATA.type}
+                      {project.name}
                     </h1>
-                    <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold bg-[#DCFCE7] text-[#16A34A]">
-                      Active
+                    <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold bg-[#DCFCE7] text-[#16A34A] capitalize">
+                      {project.status || "Active"}
                     </span>
                   </div>
                   
                   <div className="flex items-center gap-1.5 text-[#475569] mb-3">
                     <MapPin size={16} />
-                    <span className="text-[14px] font-medium">{PROJECT_DATA.location}, Lagos</span>
+                    <span className="text-[14px] font-medium">{project.address}, {project.city}</span>
                   </div>
                   
                   <div className="flex items-center gap-2 text-[14px] text-[#475569]">
-                    <span className="font-semibold text-[#0F172A]">Project ID:</span> BSP-001234
-                    <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <span className="font-semibold text-[#0F172A]">Project ID:</span> {project.id.substring(0, 8)}...
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(project.id)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Copy Project ID"
+                    >
                       <Copy size={14} />
                     </button>
                   </div>
@@ -163,11 +177,11 @@ export default function ProjectDetail() {
                   { id: 'documents', label: 'Documents' },
                   { id: 'updates', label: 'Updates' }
                 ].map((tab) => {
-                  const isActive = activeTab === tab.id || (activeTab === '1' && tab.id === 'overview');
+                  const isActive = activeTab === tab.id || (activeTab === projectId && tab.id === 'overview');
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => navigate(`/dashboard/client/project/1${tab.id === 'overview' ? '' : `/${tab.id}`}`)}
+                      onClick={() => navigate(`/dashboard/client/project/${projectId}${tab.id === 'overview' ? '' : `/${tab.id}`}`)}
                       className={`pb-4 text-[14.5px] font-semibold whitespace-nowrap transition-colors relative ${
                         isActive ? 'text-[#16A34A]' : 'text-[#64748B] hover:text-[#0F172A]'
                       }`}
@@ -184,7 +198,7 @@ export default function ProjectDetail() {
           )}
 
           {/* Nested Routes Rendered Here */}
-          <Outlet context={{ hasContractor }} />
+          <Outlet context={{ hasContractor, projectId: project.id }} />
           
         </div>
       </main>

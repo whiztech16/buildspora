@@ -1,22 +1,74 @@
-import { useState } from "react";
-import { Lightbulb, User, ChevronRight, CheckCircle2, MessageCircle, MoreVertical, Star, Building2 } from "lucide-react";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Lightbulb, User, ChevronRight, CheckCircle2, MessageCircle, MoreVertical, Star, Building2, FileText } from "lucide-react";
+import { useOutletContext, useNavigate, useParams } from "react-router-dom";
 import InviteContractorModal from "../../components/client/InviteContractorModal";
+import { api } from "../../lib/api";
 
 import { getDetailMilestones, getDetailSteps, getProjectType } from "../../data/mockData";
 
-export default function MilestonesTab({ hasContractor: propHasContractor }: { hasContractor?: boolean }) {
+export default function MilestonesTab({ hasContractor: propHasContractor, projectId: propProjectId }: { hasContractor?: boolean; projectId?: string }) {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const navigate = useNavigate();
+  const { id: paramProjectId } = useParams<{ id: string }>();
   
   // Safely get context if rendered inside an Outlet, otherwise fallback to prop or true
-  const context = useOutletContext<{ hasContractor: boolean }>();
+  const context = useOutletContext<{ hasContractor: boolean; projectId?: string }>();
   const hasContractor = context ? context.hasContractor : (propHasContractor ?? true);
+  const resolvedProjectId = propProjectId || paramProjectId || context?.projectId;
 
-  // Determine which data to show based on project type + contractor state
+  const [realProject, setRealProject] = useState<any>(null);
+  const [realMilestones, setRealMilestones] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!resolvedProjectId) return;
+    const fetchMilestones = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get<{ success: boolean; project: any; milestones: any[] }>(`/api/projects/${resolvedProjectId}`);
+        if (res.success) {
+          setRealProject(res.project);
+          setRealMilestones(res.milestones);
+        }
+      } catch (e) {
+        console.error("Failed to fetch project milestones", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMilestones();
+  }, [resolvedProjectId]);
+
   const projectType = getProjectType();
-  const milestonesToRender = getDetailMilestones(projectType, hasContractor);
-  const STEPS = getDetailSteps(projectType);
+  
+  const milestonesToRender = realMilestones.length > 0
+    ? realMilestones.map(m => ({
+        id: m.id,
+        name: m.name,
+        amount: `₦${Number(m.allocatedAmount).toLocaleString()}`,
+        status: m.status === 'pending' ? 'Pending' : m.status.charAt(0).toUpperCase() + m.status.slice(1),
+        icon: FileText
+      }))
+    : getDetailMilestones(projectType, hasContractor);
+
+  const STEPS = realMilestones.length > 0
+    ? realMilestones.map((m, idx) => ({
+        title: m.name,
+        completed: m.status === 'approved',
+        current: m.status === 'pending' && (idx === 0 || realMilestones[idx - 1].status === 'approved')
+      }))
+    : getDetailSteps(projectType);
+
+  const overallBudget = realProject?.budget 
+    ? `₦${Number(realProject.budget).toLocaleString()}` 
+    : "₦12,000,000";
+  if (loading) {
+    return (
+      <div className="flex justify-center py-10">
+        <span className="text-gray-500">Loading milestones...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 mb-10">
@@ -186,7 +238,7 @@ export default function MilestonesTab({ hasContractor: propHasContractor }: { ha
           <h2 className="text-[17px] font-semibold text-[#0F172A]">Milestones</h2>
           <div className="text-right">
             <span className="text-[12px] font-medium text-[#64748B] block mb-0.5 uppercase tracking-wider">Overall Budget</span>
-            <span className="text-[18px] font-bold text-[#16A34A]">₦12,000,000</span>
+            <span className="text-[18px] font-bold text-[#16A34A]">{overallBudget}</span>
           </div>
         </div>
         
@@ -196,7 +248,7 @@ export default function MilestonesTab({ hasContractor: propHasContractor }: { ha
             return (
               <div 
                 key={idx} 
-                onClick={() => navigate(`/dashboard/client/project/1/milestones/${milestone.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                onClick={() => navigate(`/dashboard/client/project/${resolvedProjectId || 1}/milestones/${milestone.id || milestone.name.toLowerCase().replace(/\s+/g, '-')}`)}
                 className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-[16px] border border-[#F1F5F9] hover:border-[#E2E8F0] hover:bg-[#F8FAFC]/50 transition-colors gap-4 cursor-pointer"
               >
                 <div className="flex items-center gap-4">
@@ -230,6 +282,7 @@ export default function MilestonesTab({ hasContractor: propHasContractor }: { ha
       <InviteContractorModal 
         isOpen={isInviteModalOpen} 
         onClose={() => setIsInviteModalOpen(false)} 
+        projectId={resolvedProjectId || ""}
       />
     </div>
   );

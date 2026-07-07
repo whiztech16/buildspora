@@ -5,16 +5,24 @@ import { X, Check } from "lucide-react";
 interface InviteContractorModalProps {
   readonly isOpen: boolean;
   readonly onClose: () => void;
+  readonly projectId: string;
 }
 
-export default function InviteContractorModal({ isOpen, onClose }: InviteContractorModalProps) {
+import { api } from "../../lib/api";
+
+export default function InviteContractorModal({ isOpen, onClose, projectId }: InviteContractorModalProps) {
   const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
   const [isSent, setIsSent] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setIsSent(false);
       setEmail("");
+      setMessage("");
+      setError(null);
     }
   }, [isOpen]);
 
@@ -94,6 +102,8 @@ export default function InviteContractorModal({ isOpen, onClose }: InviteContrac
                 <textarea
                   id="inviteMessage"
                   rows={4}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                   placeholder="Hi, I'd like you to join my BuildSpora project."
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A] resize-none"
                 />
@@ -105,18 +115,43 @@ export default function InviteContractorModal({ isOpen, onClose }: InviteContrac
               <button
                 onClick={onClose}
                 className="text-[14px] font-medium text-black hover:text-gray-600 transition-colors px-2"
+                disabled={isLoading}
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (email) setIsSent(true);
+                onClick={async () => {
+                  if (!email) return;
+                  setIsLoading(true);
+                  setError(null);
+                  try {
+                    const res = await api.post<{success: boolean; error?: string}>("/api/invites", {
+                      projectId,
+                      email,
+                      message
+                    });
+                    if (res.success) {
+                      setIsSent(true);
+                    } else {
+                      setError(res.error || "Failed to send invitation.");
+                    }
+                  } catch (err: any) {
+                    setError(err.message || "Failed to send invitation.");
+                  } finally {
+                    setIsLoading(false);
+                  }
                 }}
-                className={`bg-[#059669] hover:bg-[#047857] text-white px-6 py-2.5 rounded-full text-[14px] font-medium transition-colors shadow-sm ${!email ? 'opacity-50 cursor-not-allowed hover:bg-[#059669]' : ''}`}
+                className={`bg-[#059669] hover:bg-[#047857] text-white px-6 py-2.5 rounded-full text-[14px] font-medium transition-colors shadow-sm ${(!email || isLoading) ? 'opacity-50 cursor-not-allowed hover:bg-[#059669]' : ''}`}
+                disabled={isLoading || !email}
               >
-                Send Invitation
+                {isLoading ? "Sending..." : "Send Invitation"}
               </button>
             </div>
+            {error && (
+              <div className="px-6 pb-4">
+                <p className="text-red-500 text-[13px]">{error}</p>
+              </div>
+            )}
           </>
         )}
       </div>

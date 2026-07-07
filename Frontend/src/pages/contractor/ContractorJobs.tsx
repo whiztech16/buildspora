@@ -1,19 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search, ChevronDown, SlidersHorizontal, Bookmark,
-  MapPin, Clock, X, Download, ChevronLeft, FileText, Briefcase,
+  MapPin, Clock, X, Download, ChevronLeft, FileText, Loader2,
+  Building2, User, AlertCircle
 } from "lucide-react";
-import PreviewToggle from "../../components/shared/PreviewToggle";
+import { api } from "../../lib/api";
 
-const PREVIEW_STATES = [
-  { label: "New Contractor",    description: "No jobs visible" },
-  { label: "Active Contractor", description: "Job board active" },
-];
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 interface Job {
-  id: number;
+  id: number | string;
   title: string;
   location: string;
   budget: string;
@@ -26,6 +23,8 @@ interface Job {
   requirements: string[];
   documents: { name: string; size: string }[];
   status: "open" | "invited" | "applied" | "awarded" | "completed";
+  isRealInvite?: boolean;
+  onAccept?: () => Promise<void>;
 }
 
 const JOBS: Job[] = [
@@ -110,6 +109,7 @@ type TabKey = typeof TABS[number]["key"];
 function JobDetail({ job, onClose, isPage = false }: { job: Job; onClose: () => void; isPage?: boolean }) {
   const [saved, setSaved] = useState(false);
   const [applied, setApplied] = useState(job.status === "applied" || job.status === "awarded");
+  const [loadingAccept, setLoadingAccept] = useState(false);
 
   return (
     <div className={`flex flex-col h-full ${isPage ? "p-4 sm:p-6" : "p-6"}`} style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -210,15 +210,24 @@ function JobDetail({ job, onClose, isPage = false }: { job: Job; onClose: () => 
           <Bookmark size={16} strokeWidth={1.8} />
         </button>
         <button
-          onClick={() => setApplied(true)}
-          disabled={applied}
+          onClick={async () => {
+            if (job.isRealInvite && job.onAccept) {
+              setLoadingAccept(true);
+              await job.onAccept();
+              setApplied(true);
+              setLoadingAccept(false);
+            } else {
+              setApplied(true);
+            }
+          }}
+          disabled={applied || loadingAccept}
           className={`flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors ${
             applied
               ? "bg-[#F0FDF4] text-[#059669] border border-[#DCFCE7] cursor-default"
               : "bg-[#059669] text-white hover:bg-[#047857]"
           }`}
         >
-          {applied ? "Applied" : "I'm Interested"}
+          {loadingAccept ? "Processing..." : (job.isRealInvite ? (applied ? "Accepted" : "Accept Invitation") : (applied ? "Applied" : "I'm Interested"))}
         </button>
       </div>
     </div>
@@ -228,13 +237,119 @@ function JobDetail({ job, onClose, isPage = false }: { job: Job; onClose: () => 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ContractorJobs() {
-  const [previewIdx, setPreviewIdx] = useState(0);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [mobileDetailJob, setMobileDetailJob] = useState<Job | null>(null);
 
-  const allJobs = previewIdx === 0 ? [] : JOBS;
+  // ── Real project fetch ──────────────────────────────
+  interface RealProject {
+    id: string;
+    name: string;
+    status: string;
+    address: string;
+    city: string;
+    state: string;
+    clientId: string;
+    clientName?: string;
+  }
+  interface RealInvite {
+    id: string;
+    status: string;
+    createdAt: string;
+    clientName?: string;
+    project?: {
+      id: string;
+      name: string;
+      budget: string;
+      city: string;
+      state: string;
+      type: string;
+      description?: string;
+    };
+  }
+
+  const [realProject, setRealProject] = useState<RealProject | null>(null);
+  const [projectLoading, setProjectLoading] = useState(true);
+  const [realInvites, setRealInvites] = useState<RealInvite[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setProjectLoading(true);
+      try {
+        const [projRes, invRes] = await Promise.all([
+          api.get<{ success: boolean; projects: RealProject[] }>('/api/projects').catch(() => null),
+          api.get<{ success: boolean; invites: RealInvite[] }>('/api/invites').catch(() => null)
+        ]);
+        
+        if (!isMounted) return;
+
+        if (projRes?.projects && projRes.projects.length > 0) {
+          setRealProject(projRes.projects[0]);
+        } else {
+          setRealProject(null);
+        }
+
+        if (invRes?.invites) {
+          setRealInvites(invRes.invites.filter((inv) => inv.status === 'pending'));
+        }
+      } catch {
+        // fail silently
+      } finally {
+        if (isMounted) setProjectLoading(false);
+      }
+    };
+    loadData();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleAcceptInvite = async (inviteId: string) => {
+    try {
+      const res = await api.put<{ success: boolean; error?: string }>(`/api/invites/${inviteId}/accept`, {});
+      if (res.success) {
+        // Optimistic UI update or refresh
+        const newInvites = realInvites.filter(i => i.id !== inviteId);
+        setRealInvites(newInvites);
+        setSelectedJob(null);
+        setMobileDetailJob(null);
+        
+        // Refetch project
+        const projRes = await api.get<{ success: boolean; projects: RealProject[] }>('/api/projects').catch(() => null);
+        if (projRes?.projects && projRes.projects.length > 0) {
+          setRealProject(projRes.projects[0]);
+        }
+      } else {
+        alert(res.error || "Failed to accept invite");
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        alert(err.message);
+      } else {
+        alert("Failed to accept invite");
+      }
+    }
+  };
+
+  const mappedInvites: Job[] = realInvites.map(inv => ({
+    id: inv.id,
+    title: inv.project?.name || "Project Invite",
+    location: inv.project?.city && inv.project?.state ? `${inv.project.city}, ${inv.project.state}` : "Unknown Location",
+    budget: inv.project?.budget ? `₦${Number(inv.project.budget).toLocaleString()}` : "—",
+    budgetType: "Budget",
+    postedAt: new Date(inv.createdAt).toLocaleDateString(),
+    category: "Project Assignment",
+    projectType: inv.project?.type || "Residential",
+    timeline: "TBD",
+    overview: inv.project?.description || `You have been invited by ${inv.clientName || 'a client'} to work on this project.`,
+    requirements: [],
+    documents: [],
+    status: "invited",
+    isRealInvite: true,
+    onAccept: () => handleAcceptInvite(inv.id)
+  }));
+
+  const allJobs = [...mappedInvites, ...JOBS.filter(j => j.status !== 'invited' || mappedInvites.length === 0)];
 
   const filtered = allJobs.filter((j) => {
     const matchTab = activeTab === "all" || j.status === activeTab;
@@ -254,25 +369,63 @@ export default function ContractorJobs() {
   return (
     <div className="flex flex-col w-full" style={{ fontFamily: "'Inter', sans-serif" }}>
 
-      {/* Preview toggle */}
-      <PreviewToggle states={PREVIEW_STATES} current={previewIdx} onChange={(i) => { setPreviewIdx(i); setSelectedJob(null); }} />
-
-      {/* Page title */}
-      <h1 className="text-[24px] sm:text-[26px] font-bold text-[#0F172A] tracking-tight mb-5">Jobs</h1>
-
-      {/* Empty state for new contractor */}
-      {allJobs.length === 0 ? (
-        <div className="bg-white border border-[#E2E8F0] rounded-[4px] flex flex-col items-center justify-center text-center py-20 px-8">
-          <div className="w-14 h-14 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-4">
-            <Briefcase size={26} className="text-[#94A3B8]" />
+      {/* ── MY ACTIVE PROJECT ───────────────────────── */}
+      <div className="mb-6">
+        <h2 className="text-[15px] font-bold text-[#0F172A] mb-3">My Active Project</h2>
+        {projectLoading ? (
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 flex items-center gap-3">
+            <Loader2 size={18} className="animate-spin text-[#10B981]" />
+            <span className="text-[13.5px] text-[#64748B]">Loading project...</span>
           </div>
-          <h3 className="text-[16px] font-bold text-[#0F172A] mb-1.5">No jobs yet</h3>
-          <p className="text-[13.5px] text-[#64748B] max-w-[280px] leading-relaxed">
-            Complete your profile to start receiving job invitations and seeing open opportunities.
-          </p>
-        </div>
-      ) : (
-        <>
+        ) : realProject ? (
+          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-[#F0FDF4] flex items-center justify-center shrink-0">
+                <Building2 size={20} className="text-[#10B981]" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-bold text-[#0F172A] mb-0.5">{realProject.name}</h3>
+                <p className="text-[12.5px] text-[#64748B] mb-1 flex items-center gap-1.5">
+                  <MapPin size={12} /> {realProject.address ? `${realProject.address}, ` : ''}{realProject.city}, {realProject.state}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[11.5px] font-bold px-2 py-0.5 rounded-md ${
+                    realProject.status === 'active' ? 'bg-[#ECFDF5] text-[#059669]' :
+                    realProject.status === 'pending' ? 'bg-[#FFFBEB] text-[#D97706]' :
+                    'bg-[#F1F5F9] text-[#64748B]'
+                  }`}>
+                    {realProject.status.charAt(0).toUpperCase() + realProject.status.slice(1)}
+                  </span>
+                  <span className="text-[12px] text-[#64748B] flex items-center gap-1">
+                    <User size={11} /> Client assigned
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => { /* navigate to milestones */ }}
+              className="flex items-center justify-center gap-2 border border-[#10B981] text-[#10B981] px-5 py-2 rounded-lg text-[13.5px] font-semibold hover:bg-[#ECFDF5] transition-colors w-full sm:w-auto"
+            >
+              View Milestones
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white border border-[#E2E8F0] rounded-xl flex flex-col items-center justify-center text-center py-12 px-8">
+            <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-3">
+              <AlertCircle size={22} className="text-[#94A3B8]" />
+            </div>
+            <h3 className="text-[14.5px] font-bold text-[#0F172A] mb-1">No active projects</h3>
+            <p className="text-[13px] text-[#64748B] max-w-[280px] leading-relaxed">
+              Projects you're working on will appear here once clients assign you to a job.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── OPEN JOB BOARD ──────────────────────────── */}
+      <h1 className="text-[20px] font-bold text-[#0F172A] tracking-tight mb-4">Open Jobs</h1>
+
+      <>
 
       {/* Search + Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -298,21 +451,27 @@ export default function ContractorJobs() {
 
       {/* Tabs */}
       <div className="flex items-center gap-0 border-b border-[#E2E8F0] mb-4 overflow-x-auto no-scrollbar">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-3 pb-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors
-              ${activeTab === tab.key
-                ? "border-[#0F172A] text-[#0F172A]"
-                : "border-transparent text-[#64748B] hover:text-[#0F172A]"}`}
-          >
-            {tab.label}
-            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${activeTab === tab.key ? "bg-[#F1F5F9] text-[#0F172A]" : "bg-[#F8FAFC] text-[#94A3B8]"}`}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          let count: string | number = tab.count;
+          if (tab.key === "invited" && mappedInvites.length > 0) {
+            count = mappedInvites.length;
+          }
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 pb-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors
+                ${activeTab === tab.key
+                  ? "border-[#0F172A] text-[#0F172A]"
+                  : "border-transparent text-[#64748B] hover:text-[#0F172A]"}`}
+            >
+              {tab.label}
+              <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${activeTab === tab.key ? "bg-[#F1F5F9] text-[#0F172A]" : "bg-[#F8FAFC] text-[#94A3B8]"}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Sort row */}
@@ -400,7 +559,6 @@ export default function ContractorJobs() {
         )}
       </div>
       </>
-      )}
     </div>
   );
 }

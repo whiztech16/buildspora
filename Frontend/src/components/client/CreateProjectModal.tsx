@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, ArrowRight, CheckCircle2, Circle } from "lucide-react";
+import { Loader2, X, ArrowRight, CheckCircle2, Circle } from "lucide-react";
 import { PROJECT_STORAGE_KEY } from "../../data/mockData";
+import { api } from "../../lib/api";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -68,6 +69,14 @@ export default function CreateProjectModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [milestoneBudgets, setMilestoneBudgets] = useState<Record<string, string>>({});
   const [overallBudgetInput, setOverallBudgetInput] = useState("");
+  
+  // New Form states
+  const [projectName, setProjectName] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const navigate = useNavigate();
 
   const currentMilestones = projectType === "new" ? NEW_BUILD_MILESTONES : RENOVATION_MILESTONES;
@@ -96,6 +105,43 @@ export default function CreateProjectModal({
     });
     
     setMilestoneBudgets(newMilestoneBudgets);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setError("");
+      if (!projectName) throw new Error("Project name is required.");
+      if (!address) throw new Error("Property address is required.");
+      if (!city) throw new Error("City is required.");
+      if (!selectedState) throw new Error("State is required.");
+      
+      const total = parseInt(overallBudgetInput, 10);
+      if (!total || isNaN(total)) throw new Error("A valid overall budget is required.");
+
+      setIsLoading(true);
+
+      const numericBudgets: Record<string, number> = {};
+      for (const [k, v] of Object.entries(milestoneBudgets)) {
+        numericBudgets[k] = parseInt(v, 10) || 0;
+      }
+
+      const res = await api.post<{ success: boolean; project: { id: string } }>("/api/projects", {
+        name: projectName,
+        type: projectType === "new" ? "new_build" : "renovation",
+        address,
+        city,
+        state: selectedState,
+        milestoneBudgets: numericBudgets,
+      });
+
+      localStorage.setItem(PROJECT_STORAGE_KEY, projectType);
+      onClose();
+      navigate(`/dashboard/client/project/${res.project.id}`);
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || "Failed to create project.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredStates = NIGERIAN_STATES.filter(state => 
@@ -140,6 +186,8 @@ export default function CreateProjectModal({
                 <input
                   id="projectName"
                   type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
                   placeholder="e.g. Victoria Island Duplex"
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A]"
                 />
@@ -199,6 +247,8 @@ export default function CreateProjectModal({
                 <input
                   id="propertyAddress"
                   type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
                   placeholder="e.g. 15 Admiralty Way, Lekki"
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A]"
                 />
@@ -213,6 +263,8 @@ export default function CreateProjectModal({
                   <input
                     id="city"
                     type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
                     placeholder="e.g. Lagos"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] text-[14px] placeholder-gray-400 transition-all text-[#0F172A]"
                   />
@@ -349,24 +401,25 @@ export default function CreateProjectModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-white sticky bottom-0 z-10 shrink-0 rounded-b-[20px]">
-          <button
-            onClick={onClose}
-            className="text-[14px] font-medium text-black hover:text-gray-600 transition-colors px-2"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              localStorage.setItem(PROJECT_STORAGE_KEY, projectType);
-              onClose();
-              navigate("/dashboard/client/project/1");
-            }}
-            className="flex items-center gap-2 bg-[#059669] hover:bg-[#047857] text-white px-5 py-2.5 rounded-xl text-[13.5px] font-semibold transition-colors shadow-sm shadow-[#059669]/20"
-          >
-            Create Project
-            <ArrowRight size={16} strokeWidth={2.5} />
-          </button>
+        <div className="flex flex-col border-t border-gray-100 bg-white sticky bottom-0 z-10 shrink-0 rounded-b-[20px]">
+          {error && <div className="px-6 pt-3 text-[13.5px] font-medium text-red-600 text-center bg-red-50 mx-6 mt-4 rounded-lg py-2">{error}</div>}
+          <div className="flex items-center justify-between px-6 py-4">
+            <button
+              onClick={onClose}
+              className="text-[14px] font-medium text-black hover:text-gray-600 transition-colors px-2"
+              disabled={isLoading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isLoading}
+              className="flex items-center gap-2 bg-[#059669] hover:bg-[#047857] disabled:opacity-70 text-white px-5 py-2.5 rounded-xl text-[13.5px] font-semibold transition-colors shadow-sm shadow-[#059669]/20"
+            >
+              {isLoading ? <Loader2 size={16} className="animate-spin" /> : "Create Project"}
+              {!isLoading && <ArrowRight size={16} strokeWidth={2.5} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

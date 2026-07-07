@@ -34,7 +34,8 @@ const NIGERIAN_BANKS = [
 /* ─── Form state types ──────────────────────────────────── */
 interface FormData {
   // Step 1
-  photo: string | null;
+  photo: string | null;        // preview URL (objectURL or remote)
+  photoFile: File | null;      // actual file to upload
   fullName: string;
   phone: string;
   state: string;
@@ -117,12 +118,15 @@ function ControlledTextarea({
 }
 
 /* ─── Step 1: Basic Information ───────────────────────── */
-function Step1({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: string | null) => void }) {
+function Step1({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: string | null | File) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) onChange("photo", URL.createObjectURL(file));
+    if (file) {
+      onChange("photo", URL.createObjectURL(file));   // preview
+      onChange("photoFile", file);                    // real file for upload
+    }
   };
 
   return (
@@ -568,6 +572,7 @@ export default function ContractorProfileSetup() {
 
   const [formData, setFormData] = useState<FormData>({
     photo: null,
+    photoFile: null,
     fullName: "",
     phone: "",
     state: "",
@@ -583,7 +588,43 @@ export default function ContractorProfileSetup() {
     nin: "",
   });
 
-  const updateField = (key: keyof FormData, value: string | null) => {
+  // ── Pre-fill from existing profile ──────────────────────
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  useEffect(() => {
+    api.get<{ success: boolean; user: { fullName?: string; phone?: string }; profile: {
+      avatarUrl?: string | null;
+      specialty?: string | null;
+      state?: string | null;
+      city?: string | null;
+      bio?: string | null;
+      yearsExp?: number | null;
+      workPreference?: string | null;
+      teamSize?: string | null;
+      nin?: string | null;
+    } | null }>("/api/user/me")
+      .then(res => {
+        const u = res.user;
+        const p = res.profile;
+        setFormData(prev => ({
+          ...prev,
+          fullName: u?.fullName || "",
+          phone: u?.phone || "",
+          photo: p?.avatarUrl || null,
+          state: p?.state || "",
+          city: p?.city || "",
+          bio: p?.bio || "",
+          specialty: p?.specialty || "",
+          yearsExp: p?.yearsExp != null ? String(p.yearsExp) : "",
+          workPreference: p?.workPreference || "",
+          teamSize: p?.teamSize || "",
+          nin: "", // never prefill NIN for security
+        }));
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingProfile(false));
+  }, []);
+
+  const updateField = (key: keyof FormData, value: string | null | File) => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
@@ -591,10 +632,20 @@ export default function ContractorProfileSetup() {
     setIsSubmitting(true);
     setError(null);
     try {
+      // ── 1. Upload avatar if a new file was chosen ──
+      let avatarUrl: string | undefined = formData.photo && !formData.photo.startsWith('blob:') ? formData.photo : undefined;
+      if (formData.photoFile) {
+        const fd = new FormData();
+        fd.append('avatar', formData.photoFile);
+        const res = await api.postForm<{ success: boolean; avatarUrl: string }>('/api/user/avatar', fd);
+        avatarUrl = res.avatarUrl;
+      }
+
+      // ── 2. Save profile fields ──
       await api.patch("/api/user/profile", {
         fullName: formData.fullName || undefined,
         phone: formData.phone || undefined,
-        avatarUrl: formData.photo || undefined,
+        avatarUrl,
         specialty: formData.specialty || undefined,
         state: formData.state || undefined,
         city: formData.city || undefined,
@@ -604,10 +655,11 @@ export default function ContractorProfileSetup() {
         bio: formData.bio || undefined,
         nin: formData.nin || undefined,
         bankName: formData.bankName || undefined,
-        bankCode: formData.bankName || undefined, // used as identifier if no code lookup
+        bankCode: formData.bankName || undefined,
         accountNum: formData.accountNum || undefined,
         accountName: formData.accountName || undefined,
       });
+
       localStorage.setItem("buildspora_profile_complete", "true");
       navigate("/dashboard/contractor");
     } catch (err: any) {
@@ -637,6 +689,11 @@ export default function ContractorProfileSetup() {
 
   return (
     <div className="min-h-screen bg-white" style={{ fontFamily: FONT }}>
+      {isLoadingProfile && (
+        <div className="fixed inset-0 bg-white/70 z-50 flex items-center justify-center">
+          <Loader2 size={32} className="animate-spin text-[#059669]" />
+        </div>
+      )}
 
       {/* ── Top bar ── */}
       <div className="bg-white px-5 py-4 flex items-center gap-3 sticky top-0 z-10">
@@ -723,7 +780,7 @@ export default function ContractorProfileSetup() {
           {currentStep === 4 && <Step4 data={formData} onChange={(k, v) => updateField(k, v)} />}
 
           {/* ── Error message ── */}
-          {error && currentStep === total && (
+          {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-[13px] text-red-600" style={{ fontFamily: FONT }}>{error}</p>
             </div>

@@ -90,6 +90,18 @@ export default function SupplierDashboard() {
         {/* Content */}
         <div className="px-4 sm:px-6 md:px-10 pt-6 pb-16 sm:pt-8 sm:pb-24 max-w-[1000px] mx-auto w-full flex-1">
 
+          {/* Dev state toggle */}
+          <div className="flex items-center gap-1 mb-6 justify-end opacity-30 hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0]">
+              <button onClick={() => cycleState("prev")} className="p-1.5 rounded-md text-[#64748B] hover:text-[#0F172A]" title="Prev State">
+                <ChevronLeft size={16} strokeWidth={2.5} />
+              </button>
+              <button onClick={() => cycleState("next")} className="p-1.5 rounded-md text-[#64748B] hover:text-[#0F172A]" title="Next State">
+                <ChevronRight size={16} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+
           {active === "dashboard" ? (
             <>
               {/* ── HEADER ── */}
@@ -111,15 +123,6 @@ export default function SupplierDashboard() {
                 </div>
 
                 <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
-                  {/* Dev state toggle */}
-                  <div className="flex items-center gap-1 mr-2 bg-[#F8FAFC] p-1 rounded-lg border border-[#E2E8F0]">
-                    <button onClick={() => cycleState("prev")} className="p-1.5 rounded-md text-[#64748B] hover:text-[#0F172A]" title="Prev State">
-                      <ChevronLeft size={16} strokeWidth={2.5} />
-                    </button>
-                    <button onClick={() => cycleState("next")} className="p-1.5 rounded-md text-[#64748B] hover:text-[#0F172A]" title="Next State">
-                      <ChevronRight size={16} strokeWidth={2.5} />
-                    </button>
-                  </div>
 
                   <button
                     className="flex items-center gap-2 bg-[#0F172A] text-white text-[13.5px] font-medium px-5 py-2.5 rounded-lg hover:bg-black transition-colors shadow-sm"

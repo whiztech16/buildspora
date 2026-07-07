@@ -4,6 +4,7 @@ import {
   Home, Package, CreditCard, Bell,
   MessageSquare, Settings, LogOut, Menu, X, ChevronDown, ShoppingCart,
 } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 export const SUPPLIER_NAV_ITEMS = [
   { id: "dashboard",  label: "Dashboard",  Icon: Home },
@@ -44,6 +45,12 @@ export default function SupplierSidebar({
   userInitials = "DC",
 }: SupplierSidebarProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/signin");
+  };
 
   const renderNavItems = (isMobile: boolean = false) => (
     <>
@@ -98,7 +105,7 @@ export default function SupplierSidebar({
       )}
 
       <button
-        onClick={() => navigate("/")}
+        onClick={handleLogout}
         title={!isMobile && !desktopOpen ? "Log out" : undefined}
         className={`
           flex items-center rounded-xl text-[13.5px] font-medium
