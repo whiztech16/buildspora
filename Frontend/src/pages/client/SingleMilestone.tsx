@@ -325,13 +325,13 @@ export default function SingleMilestone() {
         actionLabel="Approve & Release Payment"
         onForgotPin={() => {
           setIsPinModalOpen(false);
-          setIsForgotPinOpen(true);
+          setIsForgotPinModalOpen(true);
         }}
       />
 
       <ForgotPinModal
-        isOpen={isForgotPinOpen}
-        onClose={() => setIsForgotPinOpen(false)}
+        isOpen={isForgotPinModalOpen}
+        onClose={() => setIsForgotPinModalOpen(false)}
         onSuccess={() => setIsPinModalOpen(true)}
       />
 

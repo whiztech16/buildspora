@@ -53,7 +53,7 @@ export default function MilestonesTab({ hasContractor: propHasContractor, projec
 
   const STEPS = realMilestones.length > 0
     ? realMilestones.map((m, idx) => ({
-        title: m.name,
+        name: m.name,
         completed: m.status === 'approved',
         current: m.status === 'pending' && (idx === 0 || realMilestones[idx - 1].status === 'approved')
       }))
@@ -247,8 +247,8 @@ export default function MilestonesTab({ hasContractor: propHasContractor, projec
             const Icon = milestone.icon;
             return (
               <div 
-                key={idx} 
-                onClick={() => navigate(`/dashboard/client/project/${resolvedProjectId || 1}/milestones/${milestone.id || milestone.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                key={idx}
+                onClick={() => navigate(`/dashboard/client/project/${resolvedProjectId || 1}/milestones/${('id' in milestone ? milestone.id : milestone.name.toLowerCase().replace(/\s+/g, '-'))}`)}
                 className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-[16px] border border-[#F1F5F9] hover:border-[#E2E8F0] hover:bg-[#F8FAFC]/50 transition-colors gap-4 cursor-pointer"
               >
                 <div className="flex items-center gap-4">
