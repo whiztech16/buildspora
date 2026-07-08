@@ -1,5 +1,5 @@
 
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from "react";
 import { logout as supabaseLogout } from "../lib/supabase";
 
 export type UserRole = "client" | "contractor" | "supplier";
@@ -40,6 +40,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const [isLoading] = useState(false);
+
+  // Fetch fresh user data on mount to keep `hasPin` and other flags in sync
+  useEffect(() => {
+    if (user) {
+      fetch("/api/user/me", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}`
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.user) {
+          updateUser({ hasPin: data.user.hasPin, name: data.user.fullName || data.user.name });
+        }
+      })
+      .catch(() => {});
+    }
+  }, []);
 
   const login = useCallback((newUser: AuthUser, token: string) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Bell, X, CheckCircle2, MessageCircle, AlertCircle, FileText, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 
 interface Notification {
@@ -9,6 +10,7 @@ interface Notification {
   body: string;
   isRead: boolean;
   createdAt: string;
+  linkTo?: string;
 }
 
 const formatTimeAgo = (dateStr: string) => {
@@ -64,6 +66,7 @@ export default function NotificationDrawer() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   const fetchNotifications = async () => {
     try {
@@ -93,20 +96,27 @@ export default function NotificationDrawer() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
+  const handleMarkAsRead = async (id: string, linkTo?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const notif = notifications.find(n => n.id === id);
-    if (!notif || notif.isRead) return;
+    if (!notif) return;
 
-    // Optimistic update
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    if (!notif.isRead) {
+      // Optimistic update
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
 
-    try {
-      await api.put(`/api/notifications/${id}/read`, {});
-    } catch {
-      // Revert on fail
-      fetchNotifications();
+      try {
+        await api.put(`/api/notifications/${id}/read`, {});
+      } catch {
+        // Revert on fail
+        fetchNotifications();
+      }
+    }
+    
+    if (linkTo) {
+      setIsOpen(false);
+      navigate(linkTo);
     }
   };
 
@@ -176,7 +186,7 @@ export default function NotificationDrawer() {
                 {notifications.map((notif) => (
                   <div 
                     key={notif.id}
-                    onClick={() => handleMarkAsRead(notif.id)}
+                    onClick={(e) => handleMarkAsRead(notif.id, notif.linkTo, e)}
                     className={`flex gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer ${notif.isRead ? 'opacity-70' : 'bg-[#F8FAFC]'}`}
                   >
                     {getIcon(notif.type, notif.isRead)}

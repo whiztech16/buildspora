@@ -87,7 +87,6 @@ export default function SingleMilestone() {
 
   const amount = milestone?.allocatedAmount ? Number(milestone.allocatedAmount) : 0;
   const hasSufficientBalance = balance !== null && balance >= amount;
-  const latestCheckIn = milestone?.checkIns?.[milestone.checkIns.length - 1];
 
   const handleReject = async (reason: string) => {
     if (!milestoneId) return;
@@ -189,22 +188,26 @@ export default function SingleMilestone() {
             </div>
           )}
 
-          {latestCheckIn && (
+          {milestone.checkIns && milestone.checkIns.length > 0 && (
             <div className="bg-white rounded-[16px] border border-gray-100 p-6 shadow-sm">
               <h3 className="text-[15px] font-bold text-gray-900 mb-4">Contractor Activity</h3>
-              <div className="flex flex-col gap-3 text-[13.5px]">
-                <div>
-                  <span className="text-gray-500">Checked in: </span>
-                  <span className="font-semibold">{fmtTime(latestCheckIn.checkInTime)}</span>
-                  {latestCheckIn.checkInLocationName && <span className="text-gray-500"> — {latestCheckIn.checkInLocationName}</span>}
-                </div>
-                {latestCheckIn.checkOutTime && (
-                  <div>
-                    <span className="text-gray-500">Checked out: </span>
-                    <span className="font-semibold">{fmtTime(latestCheckIn.checkOutTime)}</span>
-                    {latestCheckIn.checkOutLocationName && <span className="text-gray-500"> — {latestCheckIn.checkOutLocationName}</span>}
+              <div className="flex flex-col gap-4">
+                {milestone.checkIns.map((checkIn, idx) => (
+                  <div key={idx} className="flex flex-col gap-1.5 text-[13.5px] border-b border-gray-100 last:border-0 pb-3 last:pb-0">
+                    <div>
+                      <span className="text-gray-500">Checked in: </span>
+                      <span className="font-semibold">{fmtTime(checkIn.checkInTime)}</span>
+                      {checkIn.checkInLocationName && <span className="text-gray-500"> — {checkIn.checkInLocationName}</span>}
+                    </div>
+                    {checkIn.checkOutTime && (
+                      <div>
+                        <span className="text-gray-500">Checked out: </span>
+                        <span className="font-semibold">{fmtTime(checkIn.checkOutTime)}</span>
+                        {checkIn.checkOutLocationName && <span className="text-gray-500"> — {checkIn.checkOutLocationName}</span>}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             </div>
           )}

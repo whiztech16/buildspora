@@ -5,6 +5,7 @@ import {
   Building2, User, AlertCircle
 } from "lucide-react";
 import { api } from "../../lib/api";
+import { useNavigate } from "react-router-dom";
 
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ interface Job {
   status: "open" | "invited" | "applied" | "awarded" | "completed";
   isRealInvite?: boolean;
   onAccept?: () => Promise<void>;
+  onDecline?: () => Promise<void>;
 }
 
 const JOBS: Job[] = [
@@ -209,6 +211,19 @@ function JobDetail({ job, onClose, isPage = false }: { job: Job; onClose: () => 
         >
           <Bookmark size={16} strokeWidth={1.8} />
         </button>
+        {job.isRealInvite && job.onDecline && !applied && (
+          <button
+            onClick={async () => {
+              setLoadingAccept(true);
+              await job.onDecline!();
+              setLoadingAccept(false);
+            }}
+            disabled={loadingAccept}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
+          >
+            Decline
+          </button>
+        )}
         <button
           onClick={async () => {
             if (job.isRealInvite && job.onAccept) {
@@ -237,6 +252,7 @@ function JobDetail({ job, onClose, isPage = false }: { job: Job; onClose: () => 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ContractorJobs() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -331,6 +347,26 @@ export default function ContractorJobs() {
     }
   };
 
+  const handleDeclineInvite = async (inviteId: string) => {
+    try {
+      const res = await api.put<{ success: boolean; error?: string }>(`/api/invites/${inviteId}/decline`, {});
+      if (res.success) {
+        const newInvites = realInvites.filter(i => i.id !== inviteId);
+        setRealInvites(newInvites);
+        setSelectedJob(null);
+        setMobileDetailJob(null);
+      } else {
+        alert(res.error || "Failed to decline invite");
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        alert(err.message);
+      } else {
+        alert("Failed to decline invite");
+      }
+    }
+  };
+
   const mappedInvites: Job[] = realInvites.map(inv => ({
     id: inv.id,
     title: inv.project?.name || "Project Invite",
@@ -346,7 +382,8 @@ export default function ContractorJobs() {
     documents: [],
     status: "invited",
     isRealInvite: true,
-    onAccept: () => handleAcceptInvite(inv.id)
+    onAccept: () => handleAcceptInvite(inv.id),
+    onDecline: () => handleDeclineInvite(inv.id)
   }));
 
   const allJobs = [...mappedInvites, ...JOBS.filter(j => j.status !== 'invited' || mappedInvites.length === 0)];
@@ -403,7 +440,7 @@ export default function ContractorJobs() {
               </div>
             </div>
             <button
-              onClick={() => { /* navigate to milestones */ }}
+              onClick={() => navigate('/dashboard/contractor', { state: { activeTab: 'milestones' } })}
               className="flex items-center justify-center gap-2 border border-[#10B981] text-[#10B981] px-5 py-2 rounded-lg text-[13.5px] font-semibold hover:bg-[#ECFDF5] transition-colors w-full sm:w-auto"
             >
               View Milestones

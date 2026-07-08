@@ -17,20 +17,40 @@ export default function ContractorSubmissions() {
   useEffect(() => {
     const load = async () => {
       try {
-        const projectsRes = await api.get<{ success: boolean; projects: { id: string }[] }>('/api/projects');
-        const project = projectsRes.projects[0];
-        if (!project) return;
+        const projectsRes = await api.get<{ success: boolean; projects: { id: string, name?: string }[] }>('/api/projects');
+        if (!projectsRes.projects || projectsRes.projects.length === 0) {
+          setIsLoading(false);
+          return;
+        }
 
-        const detailRes = await api.get<{ success: boolean; milestones: (SubmittedMilestone & { id: string; name: string })[] }>(`/api/projects/${project.id}`);
-        const relevant = detailRes.milestones.filter(m => m.status === 'submitted' || m.status === 'approved' || m.status === 'rejected');
+        let allRelevant: SubmittedMilestone[] = [];
+
+        // Fetch milestones for all projects
+        for (const project of projectsRes.projects) {
+          try {
+            const detailRes = await api.get<{ success: boolean; milestones: (SubmittedMilestone & { id: string; name: string })[] }>(`/api/projects/${project.id}`);
+            const relevant = detailRes.milestones.filter(m => m.status === 'submitted' || m.status === 'approved' || m.status === 'rejected');
+            
+            // Append project name to the milestone name for clarity in the UI
+            const relevantWithProject = relevant.map(m => ({
+              ...m,
+              name: `${project.name ? project.name + ' - ' : ''}${m.name}`
+            }));
+            
+            allRelevant = [...allRelevant, ...relevantWithProject];
+          } catch {
+            continue;
+          }
+        }
 
         // Fetch details (images and summary) for each submitted milestone
-        const withDetails = await Promise.all(relevant.map(async (m) => {
+        const withDetails = await Promise.all(allRelevant.map(async (m) => {
           try {
             const detail = await api.get<{ success: boolean; milestone: { images: { storageUrl: string }[], submissionSummary?: string } }>(`/api/milestones/${m.id}`);
             return { ...m, images: detail.milestone.images || [], summary: detail.milestone.submissionSummary };
           } catch { return m; }
         }));
+        
         setSubmissions(withDetails);
       } catch {
         // silently fail

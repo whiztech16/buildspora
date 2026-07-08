@@ -12,7 +12,7 @@ import ContractorSubmissions from "./ContractorSubmissions";
 import ContractorActivity from "./ContractorActivity";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
-import NotificationDrawer from "../../../../Frontend/src/components/shared/NotificationDrawer";
+import NotificationDrawer from "../../components/shared/NotificationDrawer";
 
 interface ContractorProfile {
   avatarUrl?: string | null;
@@ -586,26 +586,10 @@ export default function ContractorDashboard() {
                   <div className="flex flex-col h-full">
                     <h2 className="text-[17px] font-bold text-[#0F172A] mb-4">Opportunities for you</h2>
                     <div className="flex flex-col gap-4 flex-1">
-                      {[
-                        { title: "Electrical Installation", loc: "Victoria Island, Lagos", price: "₦500,000", time: "2 hours ago" },
-                        { title: "Full House Wiring", loc: "Lekki Phase 1, Lagos", price: "₦350,000", time: "5 hours ago" },
-                        { title: "Generator Installation", loc: "Ajah, Lagos", price: "₦120,000", time: "Yesterday" }
-                      ].map((job) => (
-                        <div key={job.title} className="p-5 bg-white border border-[#E2E8F0] rounded-[4px] flex items-center justify-between hover:border-[#CBD5E1] transition-all">
-                          <div>
-                            <h4 className="text-[14.5px] font-bold text-[#0F172A] mb-1">{job.title}</h4>
-                            <p className="text-[13px] text-[#64748B] mb-2">{job.loc}</p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[13px] font-bold text-[#0F172A]">{job.price}</span>
-                              <span className="text-[#CBD5E1]">•</span>
-                              <span className="text-[12px] text-[#64748B]">{job.time}</span>
-                            </div>
-                          </div>
-                          <button className="px-5 py-2 rounded-lg border border-[#10B981] text-[#10B981] text-[13.5px] font-semibold hover:bg-[#ECFDF5] transition-colors shrink-0">
-                            View Job
-                          </button>
-                        </div>
-                      ))}
+                      {/* No job recommendations yet */}
+                      <div className="flex flex-col items-center justify-center border border-dashed border-[#E2E8F0] rounded-[12px] p-8 text-center">
+                        <span className="text-[13.5px] text-[#64748B]">No job recommendations yet. <br /> Check the jobs board.</span>
+                      </div>
                     </div>
                     <button className="w-full text-center text-[#10B981] text-[14px] font-semibold py-2 mt-2 hover:text-[#059669] transition-colors">
                       View all opportunities
@@ -657,14 +641,8 @@ export default function ContractorDashboard() {
                     <p className="text-[13.5px] text-[#475569] mb-4">Clients want to work with you</p>
                     
                     <div className="flex flex-col gap-4 flex-1">
-                      {[
-                        { title: "Victoria Island Duplex", subtitle: "New Build • Lekki, Lagos", client: "Chioma", price: "₦12,000,000" },
-                        { title: "Abuja Terrace Renovation", subtitle: "Renovation • Abuja", client: "Adaeze", price: "₦8,500,000" },
-                      ].length > 0 ? (
-                        [
-                          { title: "Victoria Island Duplex", subtitle: "New Build • Lekki, Lagos", client: "Chioma", price: "₦12,000,000" },
-                          { title: "Abuja Terrace Renovation", subtitle: "Renovation • Abuja", client: "Adaeze", price: "₦8,500,000" },
-                        ].map((invite) => (
+                      {false ? (
+                        [].map((invite: any) => (
                           <div key={invite.title} className="p-5 bg-white border border-[#E2E8F0] rounded-[4px] flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#CBD5E1] transition-all">
                             <div>
                               <h4 className="text-[14.5px] font-bold text-[#0F172A] mb-1">{invite.title}</h4>
@@ -721,14 +699,36 @@ export default function ContractorDashboard() {
           ) : active === 'updates' ? (
             <ContractorUpdates />
           ) : active === 'projects' ? (
-            <div className="flex flex-col items-center justify-center min-h-[400px] text-center bg-white border border-[#E2E8F0] rounded-[4px] py-20 px-8">
-              <div className="w-14 h-14 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-4">
-                <CheckCircle2 size={26} className="text-[#94A3B8]" />
-              </div>
-              <h3 className="text-[16px] font-bold text-[#0F172A] mb-1.5">No active projects</h3>
-              <p className="text-[13.5px] text-[#64748B] max-w-[280px] leading-relaxed">
-                Projects you're working on will appear here once clients assign you to a job.
-              </p>
+            <div className="bg-white border border-[#E2E8F0] rounded-[12px] p-6 lg:p-8 min-h-[400px]">
+              <h2 className="text-[20px] font-bold text-[#0F172A] mb-6">Your Projects</h2>
+              {hasActiveProject ? (
+                <div className="border border-[#E2E8F0] rounded-xl p-5 hover:border-[#CBD5E1] transition-colors bg-white">
+                  <h3 className="text-[18px] font-bold text-[#0F172A] mb-1">{dashProject?.name}</h3>
+                  <p className="text-[14px] text-[#64748B] mb-4">{dashProject?.city}, {dashProject?.state}</p>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-[12px] font-bold px-3 py-1 rounded-md ${
+                      dashProject?.status === 'active' ? 'bg-[#ECFDF5] text-[#059669]' :
+                      dashProject?.status === 'pending' ? 'bg-[#FEF3C7] text-[#D97706]' :
+                      'bg-[#F1F5F9] text-[#64748B]'
+                    }`}>
+                      {dashProject?.status ? dashProject.status.charAt(0).toUpperCase() + dashProject.status.slice(1) : ''}
+                    </span>
+                    <button onClick={() => setActive('milestones')} className="text-[13px] text-[#10B981] font-semibold hover:underline">
+                      View Milestones &rarr;
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center min-h-[300px] text-center border border-dashed border-[#E2E8F0] rounded-xl">
+                  <div className="w-14 h-14 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-4">
+                    <CheckCircle2 size={26} className="text-[#94A3B8]" />
+                  </div>
+                  <h3 className="text-[16px] font-bold text-[#0F172A] mb-1.5">No active projects</h3>
+                  <p className="text-[13.5px] text-[#64748B] max-w-[280px] leading-relaxed">
+                    Projects you're working on will appear here once clients assign you to a job.
+                  </p>
+                </div>
+              )}
             </div>
           ) : active === 'suppliers' ? (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-center bg-white border border-[#E2E8F0] rounded-[4px] py-20 px-8">

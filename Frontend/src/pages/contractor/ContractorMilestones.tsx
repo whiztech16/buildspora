@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronRight, CheckCircle2, ArrowLeft, Camera, FileCheck2, Calendar, CreditCard, Building2, Loader2, MapPin, LogIn, LogOut as LogOutIcon } from 'lucide-react';
 import { api } from '../../lib/api';
+import LiveCameraModal from '../../components/shared/LiveCameraModal';
 
 interface Milestone {
   id: string;
@@ -247,9 +248,7 @@ function MilestoneDetail({ milestones, milestone, projectName, onBack, onSubmit,
 
   useEffect(() => { loadDetail(); }, [milestone.id]);
 
-  const hasCheckedIn = ['in_progress', 'submitted', 'approved', 'rejected'].includes(milestone.status);
-  const hasCheckedOut = !!checkInRecord?.checkOutTime;
-  const canSubmit = (milestone.status === 'in_progress' && hasCheckedOut) || milestone.status === 'rejected';
+  const canSubmit = milestone.status === 'pending' || milestone.status === 'in_progress' || milestone.status === 'rejected';
 
   const fmtTime = (iso: string | null) => {
     if (!iso) return '';
@@ -367,13 +366,13 @@ function MilestoneDetail({ milestones, milestone, projectName, onBack, onSubmit,
                 </button>
               );
             })()}
-            {/* STEP 3: Submit — only after checkout (or retry after rejection) */}
+            {/* STEP 3: Submit — always show for actionable milestones */}
             {canSubmit && (
               <button
                 onClick={onSubmit}
-                className="flex justify-center bg-[#10B981] text-white px-5 py-2.5 rounded-lg text-[13.5px] font-semibold hover:bg-[#059669] transition-colors w-full sm:w-auto"
+                className="flex justify-center bg-[#10B981] text-white px-5 py-2.5 rounded-lg text-[13.5px] font-semibold hover:bg-[#059669] transition-colors w-full sm:w-auto items-center gap-2"
               >
-                Submit Milestone
+                <span>📷</span> Submit Milestone
               </button>
             )}
           </div>
@@ -489,14 +488,18 @@ function MilestoneDetail({ milestones, milestone, projectName, onBack, onSubmit,
           </div>
         )}
 
-        {hasCheckedIn && canSubmit && (
+        {canSubmit && (
           <div className="bg-white p-5 md:p-6 rounded-xl border border-[#E2E8F0] flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h3 className="text-[16px] font-bold text-[#0F172A] mb-1">Ready to submit your work?</h3>
-              <p className="text-[13.5px] text-[#64748B]">Take live photos and check out before submitting.</p>
+              <p className="text-[13.5px] text-[#64748B]">
+                {milestone.status === 'pending'
+                  ? 'Check in first, then take live photos and submit your milestone.'
+                  : 'Take live photos and submit your milestone for client review.'}
+              </p>
             </div>
-            <button onClick={onSubmit} className="bg-[#10B981] hover:bg-[#059669] text-white px-6 py-2.5 rounded-lg text-[14px] font-bold transition-colors w-full md:w-auto">
-              Submit Milestone
+            <button onClick={onSubmit} className="bg-[#10B981] hover:bg-[#059669] text-white px-6 py-2.5 rounded-lg text-[14px] font-bold transition-colors w-full md:w-auto flex items-center justify-center gap-2">
+              <span>📷</span> Submit Milestone
             </button>
           </div>
         )}
@@ -534,31 +537,27 @@ function MilestoneSubmit({ milestone, onBack, onComplete }: { milestone: Milesto
   const [error, setError] = useState<string | null>(null);
   const [hasCheckedOut, setHasCheckedOut] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+  const handleCapture = async (file: File) => {
     setIsUploading(true);
     setError(null);
     try {
       const position = await getGPS();
       const locationName = await reverseGeocode(position.coords.latitude, position.coords.longitude);
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('photo', file);
-        formData.append('lat', String(position.coords.latitude));
-        formData.append('lng', String(position.coords.longitude));
-        formData.append('locationName', locationName);
-        const res = await api.postForm<{ success: boolean; photo: CapturedPhoto }>(`/api/milestones/${milestone.id}/photos`, formData);
-        setPhotos((prev) => [...prev, res.photo]);
-      }
+      
+      const formData = new FormData();
+      formData.append('photo', file);
+      formData.append('lat', String(position.coords.latitude));
+      formData.append('lng', String(position.coords.longitude));
+      formData.append('locationName', locationName);
+      
+      const res = await api.postForm<{ success: boolean; photo: CapturedPhoto }>(`/api/milestones/${milestone.id}/photos`, formData);
+      setPhotos((prev) => [...prev, res.photo]);
     } catch (err: any) {
       setError(err instanceof GeolocationPositionError ? 'Location access denied.' : err.message || 'Photo upload failed.');
     } finally {
       setIsUploading(false);
-      if (cameraRef.current) cameraRef.current.value = '';
     }
   };
 
@@ -599,7 +598,7 @@ function MilestoneSubmit({ milestone, onBack, onComplete }: { milestone: Milesto
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const canSubmit = confirmed && hasCheckedOut && photos.length > 0 && !isSubmitting;
+  const canSubmit = confirmed && photos.length > 0 && !isSubmitting;
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -621,21 +620,14 @@ function MilestoneSubmit({ milestone, onBack, onComplete }: { milestone: Milesto
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[16px] font-bold text-[#0F172A]">Site Photos ({photos.length})</h3>
-            {isMobileDevice ? (
-              <button
-                onClick={() => cameraRef.current?.click()}
-                disabled={isUploading}
-                className="flex items-center gap-2 bg-[#0F172A] text-white px-4 py-2 rounded-lg text-[13.5px] font-semibold hover:bg-black transition-colors disabled:opacity-60"
-              >
-                {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-                {isUploading ? 'Uploading...' : 'Add Photo'}
-              </button>
-            ) : (
-              <span className="text-[12px] text-[#64748B] bg-[#F1F5F9] px-3 py-1.5 rounded-lg font-medium border border-[#E2E8F0]">
-                Live capture required (Mobile only)
-              </span>
-            )}
-            <input type="file" accept="image/*" capture="environment" multiple={false} onChange={handleCapture} style={{ display: 'none' }} ref={cameraRef} />
+            <button
+              onClick={() => setIsCameraOpen(true)}
+              disabled={isUploading}
+              className="flex items-center gap-2 bg-[#0F172A] text-white px-4 py-2 rounded-lg text-[13.5px] font-semibold hover:bg-black transition-colors disabled:opacity-60"
+            >
+              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              {isUploading ? 'Uploading...' : 'Add Photo'}
+            </button>
           </div>
 
           {photos.length === 0 ? (
@@ -723,6 +715,12 @@ function MilestoneSubmit({ milestone, onBack, onComplete }: { milestone: Milesto
           </div>
         )}
       </div>
+      
+      <LiveCameraModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onCapture={handleCapture}
+      />
     </div>
   );
 }

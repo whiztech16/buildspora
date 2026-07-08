@@ -239,6 +239,43 @@ export default function DashboardEmpty() {
             <SettingsPage />
           ) : active === 'updates' ? (
             <UpdatesPage />
+          ) : active === 'team' ? (
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 lg:p-8 min-h-[400px] mb-6">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h2 className="text-[22px] sm:text-[26px] font-bold text-[#0F172A] tracking-tight mb-1">Your Team</h2>
+                  <p className="text-[14px] text-[#6B7280]">People collaborating on your projects.</p>
+                </div>
+              </div>
+              
+              {projects.some(p => p.contractorId) ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projects.filter(p => p.contractorId).map((project, idx) => (
+                    <div key={idx} className="border border-[#E5E7EB] rounded-xl p-5 hover:border-[#D1D5DB] transition-colors bg-white">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-[#F3F4F6] flex items-center justify-center shrink-0">
+                          <User size={20} className="text-[#6B7280]" />
+                        </div>
+                        <div>
+                          <h4 className="text-[15px] font-bold text-[#0F172A] mb-0.5">Contractor</h4>
+                          <p className="text-[13px] text-[#6B7280]">Working on {project.name}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-[#E5E7EB] rounded-xl bg-[#F9FAFB]">
+                  <div className="w-[64px] h-[64px] rounded-full bg-[#F3F4F6] flex items-center justify-center mb-5">
+                    <User size={24} className="text-[#9CA3AF]" />
+                  </div>
+                  <h3 className="text-[16px] font-semibold text-[#0F172A] mb-2">No team members yet</h3>
+                  <p className="text-[14px] text-[#6B7280] max-w-[340px] leading-relaxed">
+                    You haven't assigned any contractors to your projects yet.
+                  </p>
+                </div>
+              )}
+            </div>
           ) : active !== 'projects' ? (
             <>
               {/* Generic Empty State for Other Tabs */}

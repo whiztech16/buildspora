@@ -3,8 +3,8 @@ import { Copy, ShoppingCart, FileText, Landmark, Loader2, Wallet, RefreshCw } fr
 import ContractorWithdrawPage from "../../components/contractor/ContractorWithdrawPage";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
-import SetPinModal from "../../../../Frontend/src/components/shared/SetPinModal";
-import ForgotPinModal from "../../../../Frontend/src/components/shared/ForgotPinModal";
+import SetPinModal from "../../components/shared/SetPinModal";
+import ForgotPinModal from "../../components/shared/ForgotPinModal";
 
 type EarningSource = "Milestone" | "Marketplace" | "Quote";
 
@@ -89,6 +89,7 @@ export default function ContractorPayments() {
 
   // Data state
   const [virtualAccount, setVirtualAccount] = useState<VirtualAccount | null>(null);
+  const [rawEarnings, setRawEarnings] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<Earning[]>([]);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +112,7 @@ export default function ContractorPayments() {
       const res = await api.get<PaymentsApiResponse>("/api/payments");
       setVirtualAccount(res.virtualAccount);
       setTotalEarnings(res.totalEarnings ?? 0);
+      setRawEarnings(res.earnings || []);
 
       // Map backend earnings to frontend shape
       const mapped: Earning[] = (res.earnings || []).map((e) => ({
@@ -157,6 +159,7 @@ export default function ContractorPayments() {
       const res = await api.get<PaymentsApiResponse>("/api/payments");
       if (res.virtualAccount) setVirtualAccount(res.virtualAccount);
       setTotalEarnings(res.totalEarnings ?? 0);
+      setRawEarnings(res.earnings || []);
       const mapped: Earning[] = (res.earnings || []).map((e) => ({
         source: (e.source as EarningSource) || "Milestone",
         projectClient: e.projectName || "—",
@@ -337,14 +340,18 @@ export default function ContractorPayments() {
                 {
                   label: "Paid Out",
                   value: fmtNaira(
-                    earnings.filter(e => e.status === "Paid").reduce((s) => s, 0)
+                    rawEarnings
+                      .filter(e => (e.source === "Withdrawal" || e.type === "withdrawal") && e.status === "paid")
+                      .reduce((sum, e) => sum + Number(e.amount), 0)
                   ),
                   color: "#0F172A",
                 },
                 {
                   label: "Pending",
                   value: fmtNaira(
-                    earnings.filter(e => e.status === "Pending").reduce((s) => s, 0)
+                    rawEarnings
+                      .filter(e => (e.source === "Withdrawal" || e.type === "withdrawal") && e.status !== "paid")
+                      .reduce((sum, e) => sum + Number(e.amount), 0)
                   ),
                   color: "#D97706",
                 },

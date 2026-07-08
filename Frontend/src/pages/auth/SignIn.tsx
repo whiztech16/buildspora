@@ -15,6 +15,7 @@ interface SignInResponse {
     email: string;
     fullName: string;
     role: "client" | "contractor" | "supplier";
+    hasPin: boolean;
   };
 }
 
@@ -53,6 +54,7 @@ export default function SignIn() {
           role: data.user.role,
           initials: toInitials(data.user.fullName),
           isFirstLogin: false,
+          hasPin: data.user.hasPin,
         },
         data.token
       );
