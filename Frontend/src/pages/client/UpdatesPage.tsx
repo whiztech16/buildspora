@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Bell, CheckCircle2, MessageCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 
 interface Notification {
@@ -8,6 +9,7 @@ interface Notification {
   title: string;
   body: string;
   isRead: boolean;
+  linkTo?: string;
   createdAt: string;
 }
 
@@ -41,6 +43,7 @@ function NotifIcon({ type, read }: { type: string; read: boolean }) {
 }
 
 export default function UpdatesPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,13 +82,19 @@ export default function UpdatesPage() {
 
   const handleMarkAsRead = async (id: string) => {
     const notif = notifications.find(n => n.id === id);
-    if (!notif || notif.isRead) return;
+    if (!notif) return;
 
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    try {
-      await api.put(`/api/notifications/${id}/read`, {});
-    } catch {
-      fetchNotifications();
+    if (!notif.isRead) {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      try {
+        await api.put(`/api/notifications/${id}/read`, {});
+      } catch {
+        fetchNotifications();
+      }
+    }
+
+    if (notif.linkTo) {
+      navigate(notif.linkTo);
     }
   };
 
