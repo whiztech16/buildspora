@@ -19,8 +19,8 @@ Thank you for reviewing BuildSpora. To explore the platform without creating a n
 ### Demo Accounts
 
 #### Client Account
-- **Email**: `fortuneokpara7@gmail.com`
-- **Password**: `Nkemakolam@19`
+- **Email**: `test@gmail.com`
+- **Password**: `password123`
 
 **Use this account to:**
 - Create and manage construction projects
