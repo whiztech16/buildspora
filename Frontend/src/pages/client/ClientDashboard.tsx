@@ -229,7 +229,13 @@ export default function DashboardEmpty() {
                   Milestones
                 </h1>
               </div>
-              <MilestonesTab hasContractor={projects.some(p => p.contractorId != null)} projectId={projects.length > 0 ? projects[0].id : undefined} />
+              {isLoadingProjects ? (
+                <div className="flex items-center justify-center min-h-[300px]">
+                  <div className="animate-spin w-7 h-7 border-2 border-[#16A34A] border-t-transparent rounded-full" />
+                </div>
+              ) : (
+                <MilestonesTab projectId={projects.length > 0 ? projects[0].id : undefined} />
+              )}
             </>
           ) : active === 'marketplace' ? (
             <Marketplace />

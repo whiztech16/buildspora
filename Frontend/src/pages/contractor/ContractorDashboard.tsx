@@ -10,6 +10,7 @@ import ContractorSidebar from "../../components/contractor/ContractorSidebar";
 import ContractorUpdates from "./ContractorUpdates";
 import ContractorSubmissions from "./ContractorSubmissions";
 import ContractorActivity from "./ContractorActivity";
+import ContractorJobs from "./ContractorJobs";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 import NotificationDrawer from "../../components/shared/NotificationDrawer";
@@ -79,6 +80,7 @@ export default function ContractorDashboard() {
   const [dashEarnings, setDashEarnings] = useState<any[]>([]);
   const [activeJobs, setActiveJobs] = useState(0);
   const [completedJobs, setCompletedJobs] = useState(0);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
 
   // Current milestone = first non-approved
   const currentMilestone = dashMilestones.find(m => m.status !== 'approved') || null;
@@ -113,6 +115,13 @@ export default function ContractorDashboard() {
       const payRes = await api.get<{ success: boolean; totalEarnings: number; earnings: any[] }>('/api/payments');
       setTotalEarnings(payRes.totalEarnings || 0);
       setDashEarnings(payRes.earnings || []);
+    } catch { /* fail silently */ }
+
+    // Fetch pending invites count
+    try {
+      const invRes = await api.get<{ success: boolean; invites: { status: string }[] }>('/api/invites');
+      const pending = (invRes.invites || []).filter(i => i.status === 'pending').length;
+      setPendingInviteCount(pending);
     } catch { /* fail silently */ }
   };
 
@@ -232,6 +241,7 @@ export default function ContractorDashboard() {
       <ContractorSidebar
         active={active}
         onNavigate={setActive}
+        inviteCount={pendingInviteCount}
         desktopOpen={desktopOpen}
         onToggleDesktop={() => setDesktopOpen(!desktopOpen)}
         mobileOpen={mobileOpen}
@@ -271,10 +281,10 @@ export default function ContractorDashboard() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                 <div>
                   <h1 className="text-[24px] sm:text-[28px] font-bold tracking-tight text-[#0F172A] leading-tight">
-                    {isComplete === false ? (
-                      <>Welcome to Build<span className="text-[#059669]">Spora</span>, {displayName}!</>
-                    ) : (
+                    {hasActiveProject || isComplete ? (
                       <>Welcome back, {displayName}!</>
+                    ) : (
+                      <>Welcome to Build<span className="text-[#059669]">Spora</span>, {displayName}!</>
                     )}
                   </h1>
                   <p className="text-[14px] sm:text-[15px] text-[#475569] mt-1.5">
@@ -292,28 +302,21 @@ export default function ContractorDashboard() {
                 </div>
               </div>
 
-              {/* Stats Grid (Top if complete) */}
-              {isComplete && (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-6">
-                  {(hasActiveProject ? [
-                    { value: activeJobs.toString(), label: activeJobs === 1 ? "Active Job" : "Active Jobs", desc: "Keep it up!" },
-                    { value: completedJobs.toString(), label: "Completed Jobs", desc: completedJobs > 0 ? "Good work!" : "No completed jobs yet" },
-                    { value: fmtNaira(totalEarnings), label: "Total Earnings", desc: "See overview" },
-                    { value: "4.8", label: "Reviews (4)", desc: "View all reviews" },
-                  ] : [
-                    { value: "0", label: "Active Jobs", desc: "No active jobs yet" },
-                    { value: "0", label: "Completed Jobs", desc: "Keep up the good work" },
-                    { value: "₦0.00", label: "Total Earnings", desc: "Your earnings overview" },
-                    { value: "0", label: "Reviews", desc: "No reviews yet" },
-                  ]).map((stat) => (
-                    <div key={stat.label} className="bg-white border border-[#E2E8F0] rounded-[4px] p-4 sm:p-6 flex flex-col justify-center min-h-[120px] aspect-square sm:aspect-auto">
-                      <h3 className="text-[20px] sm:text-[26px] font-bold text-[#0F172A] leading-none mb-1.5">{stat.value}</h3>
-                      <p className="text-[13px] sm:text-[14px] font-semibold text-[#0F172A] mb-1">{stat.label}</p>
-                      <p className="text-[11px] sm:text-[12.5px] text-[#64748B]">{stat.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Stats Grid — always show real data */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-6">
+                {[
+                  { value: activeJobs.toString(), label: activeJobs === 1 ? "Active Job" : "Active Jobs", desc: activeJobs > 0 ? "Currently working" : "No active jobs yet", highlight: activeJobs > 0 },
+                  { value: completedJobs.toString(), label: "Completed Jobs", desc: completedJobs > 0 ? "Great work!" : "No completed jobs yet", highlight: false },
+                  { value: fmtNaira(totalEarnings), label: "Total Earnings", desc: totalEarnings > 0 ? "Lifetime earnings" : "Your earnings overview", highlight: totalEarnings > 0 },
+                  { value: "0", label: "Reviews", desc: "No reviews yet", highlight: false },
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-white border border-[#E2E8F0] rounded-[4px] p-4 sm:p-6 flex flex-col justify-center min-h-[110px] sm:min-h-[130px]">
+                    <h3 className={`text-[20px] sm:text-[26px] font-bold leading-none mb-1.5 ${stat.highlight ? 'text-[#10B981]' : 'text-[#0F172A]'}`}>{stat.value}</h3>
+                    <p className="text-[13px] sm:text-[14px] font-semibold text-[#0F172A] mb-1">{stat.label}</p>
+                    <p className="text-[11px] sm:text-[12.5px] text-[#64748B]">{stat.desc}</p>
+                  </div>
+                ))}
+              </div>
 
               {/* Middle Section */}
               {hasActiveProject ? (
@@ -560,38 +563,24 @@ export default function ContractorDashboard() {
                 </div>
               )}
 
-              {/* Stats Grid (Bottom if not complete) */}
-              {isComplete === false && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
-                  {[
-                    { value: "0", label: "Active Jobs", desc: "No active jobs yet" },
-                    { value: "0", label: "Completed Jobs", desc: "Keep up the good work" },
-                    { value: "₦0.00", label: "Total Earnings", desc: "Your earnings overview" },
-                    { value: "0", label: "Reviews", desc: "No reviews yet" },
-                  ].map((stat) => (
-                    <div key={stat.label} className="bg-white border border-[#E2E8F0] rounded-[4px] p-6 flex flex-col justify-center min-h-[120px]">
-                      <h3 className="text-[26px] font-bold text-[#0F172A] leading-none mb-1.5">{stat.value}</h3>
-                      <p className="text-[14px] font-semibold text-[#0F172A] mb-1">{stat.label}</p>
-                      <p className="text-[12.5px] text-[#64748B]">{stat.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+
 
               {/* Bottom Sections Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 
-                {/* Getting Started OR Opportunities */}
-                {isComplete ? (
+                {/* Left: Opportunities (when active/complete) OR Getting Started (new contractor, no job) */}
+                {(hasActiveProject || isComplete) ? (
                   <div className="flex flex-col h-full">
                     <h2 className="text-[17px] font-bold text-[#0F172A] mb-4">Opportunities for you</h2>
                     <div className="flex flex-col gap-4 flex-1">
-                      {/* No job recommendations yet */}
                       <div className="flex flex-col items-center justify-center border border-dashed border-[#E2E8F0] rounded-[12px] p-8 text-center">
                         <span className="text-[13.5px] text-[#64748B]">No job recommendations yet. <br /> Check the jobs board.</span>
                       </div>
                     </div>
-                    <button className="w-full text-center text-[#10B981] text-[14px] font-semibold py-2 mt-2 hover:text-[#059669] transition-colors">
+                    <button
+                      onClick={() => setActive('jobs')}
+                      className="w-full text-center text-[#10B981] text-[14px] font-semibold py-2 mt-2 hover:text-[#059669] transition-colors"
+                    >
                       View all opportunities
                     </button>
                   </div>
@@ -688,6 +677,8 @@ export default function ContractorDashboard() {
                 )}
               </div>
             </>
+          ) : active === 'jobs' ? (
+            <ContractorJobs />
           ) : active === 'payments' ? (
             <ContractorPayments />
           ) : active === 'milestones' ? (

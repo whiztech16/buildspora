@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Bell, X, CheckCircle2, MessageCircle, AlertCircle, FileText, ChevronRight } from "lucide-react";
+import { Bell, X, CheckCircle2, MessageCircle, AlertCircle, FileText, ChevronRight, Briefcase, CreditCard, Flag } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 
 interface Notification {
@@ -27,16 +28,60 @@ const formatTimeAgo = (dateStr: string) => {
   return date.toLocaleDateString();
 };
 
+/** Resolve the destination tab/page based on notification type */
+function resolveNotifLink(type: string, userRole?: string): { path: string; tab?: string } | null {
+  const base = userRole === 'contractor' ? '/dashboard/contractor' : '/dashboard/client';
+
+  switch (type) {
+    // Contractor invite notifications → Jobs & Invites tab
+    case 'invite':
+    case 'new_invite':
+    case 'project_invite':
+      return { path: base, tab: 'jobs' };
+
+    // Payment notifications
+    case 'payment':
+    case 'payment_received':
+    case 'payment_failed':
+    case 'funds_received':
+      return { path: base, tab: 'payments' };
+
+    // Milestone notifications
+    case 'milestone':
+    case 'milestone_approved':
+    case 'milestone_rejected':
+    case 'milestone_submitted':
+      return { path: base, tab: 'milestones' };
+
+    // Updates/general
+    case 'message':
+    case 'alert':
+      return { path: base, tab: 'updates' };
+
+    default:
+      // Fallback: use body/title text heuristic for invite types not in the enum
+      return null;
+  }
+}
+
 const getIcon = (type: string, isRead: boolean) => {
   const baseClasses = "flex items-center justify-center shrink-0 w-10 h-10 rounded-full";
   const readStyles = isRead ? "bg-gray-100 text-gray-400" : "";
   
   switch (type) {
     case "milestone_approved":
-    case "payment_received":
+    case "milestone_submitted":
       return (
         <div className={`${baseClasses} ${readStyles || "bg-[#DCFCE7] text-[#16A34A]"}`}>
-          <CheckCircle2 size={20} />
+          <Flag size={20} />
+        </div>
+      );
+    case "payment_received":
+    case "payment":
+    case "funds_received":
+      return (
+        <div className={`${baseClasses} ${readStyles || "bg-[#EFF6FF] text-[#3B82F6]"}`}>
+          <CreditCard size={20} />
         </div>
       );
     case "milestone_rejected":
@@ -46,10 +91,24 @@ const getIcon = (type: string, isRead: boolean) => {
           <AlertCircle size={20} />
         </div>
       );
+    case "invite":
+    case "new_invite":
+    case "project_invite":
+      return (
+        <div className={`${baseClasses} ${readStyles || "bg-[#F5F3FF] text-[#7C3AED]"}`}>
+          <Briefcase size={20} />
+        </div>
+      );
     case "message":
       return (
         <div className={`${baseClasses} ${readStyles || "bg-blue-100 text-blue-600"}`}>
           <MessageCircle size={20} />
+        </div>
+      );
+    case "milestone":
+      return (
+        <div className={`${baseClasses} ${readStyles || "bg-[#DCFCE7] text-[#16A34A]"}`}>
+          <CheckCircle2 size={20} />
         </div>
       );
     default:
@@ -67,6 +126,7 @@ export default function NotificationDrawer() {
   const [unreadCount, setUnreadCount] = useState(0);
   const drawerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const fetchNotifications = async () => {
     try {
@@ -96,27 +156,44 @@ export default function NotificationDrawer() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const handleMarkAsRead = async (id: string, linkTo?: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const notif = notifications.find(n => n.id === id);
-    if (!notif) return;
-
+  const handleNotificationClick = async (notif: Notification) => {
+    // Mark as read
     if (!notif.isRead) {
-      // Optimistic update
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
-
       try {
-        await api.put(`/api/notifications/${id}/read`, {});
+        await api.put(`/api/notifications/${notif.id}/read`, {});
       } catch {
-        // Revert on fail
         fetchNotifications();
       }
     }
-    
-    if (linkTo) {
+
+    // Determine where to navigate
+    let destination: { path: string; tab?: string } | null = null;
+
+    // 1. Check notification type for smart routing
+    destination = resolveNotifLink(notif.type, user?.role);
+
+    // 2. Heuristic fallback: check title/body for invite keywords
+    if (!destination) {
+      const text = `${notif.title} ${notif.body}`.toLowerCase();
+      if (text.includes('invite') || text.includes('invited') || text.includes('invitation')) {
+        const base = user?.role === 'contractor' ? '/dashboard/contractor' : '/dashboard/client';
+        destination = { path: base, tab: user?.role === 'contractor' ? 'jobs' : 'talents' };
+      } else if (notif.linkTo) {
+        setIsOpen(false);
+        navigate(notif.linkTo);
+        return;
+      }
+    }
+
+    if (destination) {
       setIsOpen(false);
-      navigate(linkTo);
+      if (destination.tab) {
+        navigate(destination.path, { state: { activeTab: destination.tab } });
+      } else {
+        navigate(destination.path);
+      }
     }
   };
 
@@ -138,6 +215,7 @@ export default function NotificationDrawer() {
     setIsOpen(!isOpen);
     if (!isOpen) fetchNotifications();
   };
+
 
   return (
     <div className="relative" ref={drawerRef}>
@@ -186,7 +264,7 @@ export default function NotificationDrawer() {
                 {notifications.map((notif) => (
                   <div 
                     key={notif.id}
-                    onClick={(e) => handleMarkAsRead(notif.id, notif.linkTo, e)}
+                    onClick={() => handleNotificationClick(notif)}
                     className={`flex gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer ${notif.isRead ? 'opacity-70' : 'bg-[#F8FAFC]'}`}
                   >
                     {getIcon(notif.type, notif.isRead)}

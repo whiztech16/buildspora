@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Home, Briefcase, CreditCard, Bell,
   Settings, LogOut, Menu, X, ChevronDown,
-  Camera, Activity as ActivityIcon
+  Camera, Activity as ActivityIcon, Inbox
 } from "lucide-react";
 import { ClipboardList } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -11,23 +11,25 @@ import { useState, useEffect } from "react";
 import { api } from "../../lib/api";
 
 export const NAV_ITEMS = [
-  { id: "dashboard", label: "Dashboard", Icon: Home },
-  { id: "projects",  label: "Projects",  Icon: ClipboardList },
-  { id: "milestones",label: "Milestones",Icon: Flag },
-  { id: "submissions",label: "Submissions",Icon: Camera },
-  { id: "activity",  label: "Activity",  Icon: ActivityIcon },
-  { id: "updates",   label: "Updates",   Icon: Bell },
-  { id: "payments",  label: "Payments",  Icon: CreditCard },
-  { id: "suppliers", label: "Suppliers", Icon: Briefcase }, // using Briefcase for Suppliers
-  { id: "team",      label: "Team",      Icon: Users },
-  { id: "settings",  label: "Settings",  Icon: Settings },
+  { id: "dashboard",   label: "Dashboard",    Icon: Home },
+  { id: "jobs",        label: "Jobs & Invites",Icon: Inbox },
+  { id: "projects",   label: "Projects",      Icon: ClipboardList },
+  { id: "milestones", label: "Milestones",    Icon: Flag },
+  { id: "submissions",label: "Submissions",   Icon: Camera },
+  { id: "activity",   label: "Activity",      Icon: ActivityIcon },
+  { id: "updates",    label: "Updates",       Icon: Bell },
+  { id: "payments",   label: "Payments",      Icon: CreditCard },
+  { id: "suppliers",  label: "Suppliers",     Icon: Briefcase },
+  { id: "team",       label: "Team",          Icon: Users },
+  { id: "settings",   label: "Settings",      Icon: Settings },
 ];
 
 interface ContractorSidebarProps {
   active: string;
   onNavigate: (id: string) => void;
+  inviteCount?: number;
 
-// Desktop drawer
+  // Desktop drawer
   desktopOpen: boolean;
   onToggleDesktop: () => void;
 
@@ -46,6 +48,7 @@ const LOGO = (
 export default function ContractorSidebar({
   active,
   onNavigate,
+  inviteCount = 0,
   desktopOpen,
   onToggleDesktop,
   mobileOpen,
@@ -75,26 +78,41 @@ export default function ContractorSidebar({
     <>
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = active === id;
+        const badge = id === "jobs" && inviteCount > 0 ? inviteCount : 0;
         return (
           <button
             key={id}
             onClick={() => { onNavigate(id); if (isMobile) onCloseMobile(); }}
             title={!isMobile && !desktopOpen ? label : undefined}
             className={`
-              flex items-center rounded-xl font-medium transition-colors cursor-pointer text-left
+              relative flex items-center rounded-xl font-medium transition-colors cursor-pointer text-left
               ${isMobile
                 ? `w-full gap-3 px-3 py-3 text-[14px] ${isActive ? "bg-[#F1F5F9] text-[#0F172A]" : "text-[#0F172A] hover:bg-[#F9FAFB]"}`
                 : `text-[13.5px] ${desktopOpen ? "px-3 py-2.5 gap-3 w-full" : "w-[44px] h-[44px] justify-center mx-auto shrink-0"} ${isActive ? "bg-[#F1F5F9] text-[#0F172A]" : "text-[#0F172A] hover:bg-[#F9FAFB]"}`
               }
             `}
           >
-            <Icon
-              size={18}
-              strokeWidth={1.8}
-              className={`shrink-0 ${isActive ? "text-[#0F172A]" : "text-[#475569]"}`}
-            />
+            <span className="relative shrink-0">
+              <Icon
+                size={18}
+                strokeWidth={1.8}
+                className={`${isActive ? "text-[#0F172A]" : "text-[#475569]"}`}
+              />
+              {badge > 0 && !desktopOpen && !isMobile && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#7C3AED] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
+            </span>
             {(isMobile || desktopOpen) && (
-              <span className="whitespace-nowrap overflow-hidden">{label}</span>
+              <span className="flex items-center gap-2 whitespace-nowrap overflow-hidden flex-1">
+                {label}
+                {badge > 0 && (
+                  <span className="ml-auto bg-[#7C3AED] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {badge > 9 ? '9+' : badge}
+                  </span>
+                )}
+              </span>
             )}
           </button>
         );

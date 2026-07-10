@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2, CreditCard, Bell, Star, FileText,
-  Briefcase, AlertCircle, Clock, Loader2
+  Briefcase, AlertCircle, Clock, Loader2, Flag
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -38,12 +39,31 @@ const TYPE_META: Record<NotifType, { Icon: React.ElementType; bg: string; color:
   document:  { Icon: FileText,      bg: "#F8FAFC", color: "#64748B" },
   job:       { Icon: Clock,         bg: "#F0FDF4", color: "#059669" },
   alert:     { Icon: AlertCircle,   bg: "#FFF7ED", color: "#EA580C" },
+  // Extra types from backend
+  milestone_approved: { Icon: CheckCircle2, bg: "#F0FDF4", color: "#059669" },
+  milestone_rejected: { Icon: AlertCircle,  bg: "#FFF7ED", color: "#EA580C" },
+  milestone_submitted:{ Icon: Flag,         bg: "#EFF6FF", color: "#3B82F6" },
+  payment_received:   { Icon: CreditCard,   bg: "#EFF6FF", color: "#3B82F6" },
+  payment_failed:     { Icon: AlertCircle,  bg: "#FFF7ED", color: "#EA580C" },
+  funds_received:     { Icon: CreditCard,   bg: "#EFF6FF", color: "#3B82F6" },
+  new_invite:         { Icon: Briefcase,    bg: "#F5F3FF", color: "#7C3AED" },
+  project_invite:     { Icon: Briefcase,    bg: "#F5F3FF", color: "#7C3AED" },
 };
+
+/** Resolve destination tab from notification type */
+function resolveTab(type: string): string | null {
+  if (['invite','new_invite','project_invite','job'].includes(type)) return 'jobs';
+  if (['payment','payment_received','payment_failed','funds_received'].includes(type)) return 'payments';
+  if (['milestone','milestone_approved','milestone_rejected','milestone_submitted'].includes(type)) return 'milestones';
+  if (['message','alert'].includes(type)) return null; // stay on updates
+  return null;
+}
 
 export default function ContractorUpdates() {
   const [tab, setTab] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   const fetchNotifications = async () => {
     try {
@@ -86,6 +106,22 @@ export default function ContractorUpdates() {
       await api.put(`/api/notifications/${id}/read`, {});
     } catch {
       fetchNotifications();
+    }
+  };
+
+  const handleNotificationClick = async (notif: Notification) => {
+    await markRead(notif.id);
+
+    // Resolve destination tab
+    let tab = resolveTab(notif.type);
+    if (!tab) {
+      const text = `${notif.title} ${notif.body}`.toLowerCase();
+      if (text.includes('invite') || text.includes('invited') || text.includes('invitation')) {
+        tab = 'jobs';
+      }
+    }
+    if (tab) {
+      navigate('/dashboard/contractor', { state: { activeTab: tab } });
     }
   };
 
@@ -170,7 +206,7 @@ export default function ContractorUpdates() {
             return (
               <button
                 key={notif.id}
-                onClick={() => markRead(notif.id)}
+                onClick={() => handleNotificationClick(notif)}
                 className={`w-full text-left flex items-start gap-4 px-5 py-4 border-b border-[#F8FAFC] last:border-none transition-colors
                   ${!notif.isRead ? "bg-[#FAFFFE]" : "bg-white"} hover:bg-[#F8FAFC]`}
               >
