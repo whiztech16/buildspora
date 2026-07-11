@@ -25,20 +25,53 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// ── Storage strategy ────────────────────────────────────────────────────────
+// SESSION_KEY lives in sessionStorage (per-tab, never shared between tabs).
+// This fixes the multi-tab / multi-role bug: each tab holds its own session
+// independently so Tab-2 logging in as contractor can't stomp Tab-1's client
+// session.
+//
+// TOKEN_KEY stays in localStorage so the same JWT is accessible to both the
+// React app and any service workers. Tabs can legitimately share the same
+// Supabase-issued JWT, so this is safe.
 const SESSION_KEY = "buildspora_session";
-const TOKEN_KEY = "buildspora_token";
+const TOKEN_KEY   = "buildspora_token";
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch {
+function readSession(): AuthUser | null {
+  try {
+    // Prefer sessionStorage (per-tab).
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw) as AuthUser;
+
+    // Migration: if the user already has a session in localStorage from before
+    // this fix, move it to sessionStorage so they aren't forced to re-login.
+    const legacyRaw = localStorage.getItem(SESSION_KEY);
+    if (legacyRaw) {
+      const legacyUser = JSON.parse(legacyRaw) as AuthUser;
+      sessionStorage.setItem(SESSION_KEY, legacyRaw);
+      // Remove from localStorage so future tabs start fresh
       localStorage.removeItem(SESSION_KEY);
+      return legacyUser;
     }
-    return null;
-  });
+  } catch {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+  }
+  return null;
+}
 
+function writeSession(user: AuthUser): void {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+}
+
+function clearSession(): void {
+  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY); // also clear legacy key
+}
+
+// ── Provider ────────────────────────────────────────────────────────────────
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(() => readSession());
   const [isLoading] = useState(false);
 
   // Fetch fresh user data on mount to keep `hasPin` and other flags in sync
@@ -57,19 +90,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for token removal in localStorage (e.g. logout from another tab).
+  // sessionStorage changes DON'T fire storage events across tabs (by design),
+  // so we only need to watch for the token being cleared to force logout here.
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === TOKEN_KEY && !e.newValue) {
+        // Another tab logged out — clear this tab's session too
+        sessionStorage.removeItem(SESSION_KEY);
+        setUser(null);
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   const login = useCallback((newUser: AuthUser, token: string) => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
+    writeSession(newUser);
     localStorage.setItem(TOKEN_KEY, token);
     setUser(newUser);
   }, []);
 
   const logout = async () => {
-    // Kill the Supabase server-side session first
     await supabaseLogout();
-    // Then clear local state & storage
-    localStorage.removeItem(SESSION_KEY);
+    clearSession();
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   };
@@ -77,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearFirstLogin = () => {
     if (!user) return;
     const updated = { ...user, isFirstLogin: false };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+    writeSession(updated);
     setUser(updated);
   };
 
@@ -85,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => {
       if (!prev) return null;
       const updated = { ...prev, ...updates };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+      writeSession(updated);
       return updated;
     });
   }, []);

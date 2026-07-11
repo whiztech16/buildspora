@@ -1,16 +1,26 @@
 import { useState, useEffect, useCallback } from "react";
-import { MapPin, LogIn as LogInIcon, LogOut as LogOutIcon, Clock, Loader2 } from "lucide-react";
+import { MapPin, LogIn as LogInIcon, LogOut as LogOutIcon, Clock, Loader2, RefreshCw } from "lucide-react";
 import { api } from "../../lib/api";
 
-interface ActivityEntry {
+interface CheckInEntry {
+  id: string;
   milestoneId: string;
-  milestoneName: string;
   checkInTime: string;
   checkInLocationName: string | null;
-  checkInMapsUrl?: string;
+  checkInMapsUrl?: string | null;
   checkOutTime: string | null;
   checkOutLocationName: string | null;
-  checkOutMapsUrl?: string;
+  checkOutMapsUrl?: string | null;
+}
+
+interface MilestoneEntry {
+  id: string;
+  name: string;
+  status: string;
+}
+
+interface ActivityEntry extends CheckInEntry {
+  milestoneName: string;
 }
 
 interface ActiveMilestone {
@@ -40,22 +50,15 @@ const getGPS = () =>
  * Falls back to coordinate string only if both fail.
  */
 const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
-  // Try Nominatim first with proper headers
   try {
     const r = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`,
-      {
-        headers: {
-          "Accept-Language": "en",
-          "User-Agent": "BuildSpora-App/1.0",
-        },
-      }
+      { headers: { "Accept-Language": "en", "User-Agent": "BuildSpora-App/1.0" } }
     );
     if (r.ok) {
       const d = await r.json();
-      if (d && d.address) {
+      if (d?.address) {
         const a = d.address;
-        // Build a human-readable string: road / suburb / city / state
         const parts = [
           a.road || a.pedestrian || a.footway,
           a.suburb || a.neighbourhood || a.quarter,
@@ -64,32 +67,20 @@ const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
         ].filter(Boolean);
         if (parts.length >= 2) return parts.join(", ");
       }
-      // Fallback: first 3 segments of display_name
-      if (d?.display_name) {
-        return d.display_name.split(",").slice(0, 3).join(",").trim();
-      }
+      if (d?.display_name) return d.display_name.split(",").slice(0, 3).join(",").trim();
     }
-  } catch {
-    // Nominatim failed — try second service
-  }
+  } catch { /* try next */ }
 
-  // Try BigDataCloud (free, no key, good African coverage)
   try {
     const r2 = await fetch(
       `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
     );
     if (r2.ok) {
       const d2 = await r2.json();
-      const parts2 = [
-        d2.locality,
-        d2.principalSubdivision,
-        d2.countryName,
-      ].filter(Boolean);
+      const parts2 = [d2.locality, d2.principalSubdivision, d2.countryName].filter(Boolean);
       if (parts2.length > 0) return parts2.join(", ");
     }
-  } catch {
-    // Both failed
-  }
+  } catch { /* both failed */ }
 
   return `${lat.toFixed(6)},${lng.toFixed(6)}`;
 };
@@ -98,11 +89,8 @@ export default function ContractorActivity() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Active project / milestone for check-in/out
   const [activeMilestone, setActiveMilestone] = useState<ActiveMilestone | null>(null);
 
-  // Action states
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -111,6 +99,8 @@ export default function ContractorActivity() {
   const loadActivity = useCallback(async () => {
     try {
       setLoadError(null);
+
+      // Step 1: Get the contractor's projects list
       const projectsRes = await api.get<{ success: boolean; projects: { id: string }[] }>(
         "/api/projects"
       );
@@ -120,41 +110,33 @@ export default function ContractorActivity() {
         return;
       }
 
-      const detailRes = await api.get<{
+      // Step 2: ONE call gets all milestones + all check-ins at once
+      // Previously this was N separate /api/milestones/:id calls (one per milestone)
+      const activityRes = await api.get<{
         success: boolean;
-        milestones: { id: string; name: string; status: string }[];
-      }>(`/api/projects/${project.id}`);
+        milestones: MilestoneEntry[];
+        checkIns: CheckInEntry[];
+      }>(`/api/milestones/activity/${project.id}`);
+
+      const { milestones: projectMilestones, checkIns } = activityRes;
+
+      // Build a fast lookup map: milestoneId → name
+      const milestoneNameMap = new Map(projectMilestones.map(m => [m.id, m.name]));
 
       // Identify active milestone (first non-approved)
-      const cur = detailRes.milestones.find((m) => m.status !== "approved") || null;
+      const cur = projectMilestones.find(m => m.status !== "approved") || null;
       setActiveMilestone(cur ? { id: cur.id, name: cur.name } : null);
 
-      const activityItems: ActivityEntry[] = [];
-      for (const m of detailRes.milestones) {
-        try {
-          const detail = await api.get<{
-            success: boolean;
-            milestone: { checkIns: ActivityEntry[] };
-          }>(`/api/milestones/${m.id}`);
-          if (detail?.milestone?.checkIns) {
-            for (const ci of detail.milestone.checkIns) {
-              activityItems.push({ ...ci, milestoneId: m.id, milestoneName: m.name });
-            }
-          }
-        } catch (err: any) {
-          console.error(`Failed to load check-ins for milestone ${m.id}`, err);
-        }
-      }
+      // Merge check-ins with milestone names, already sorted by backend (desc checkInTime)
+      const merged: ActivityEntry[] = checkIns.map(ci => ({
+        ...ci,
+        milestoneName: milestoneNameMap.get(ci.milestoneId) ?? "Milestone",
+      }));
 
-      activityItems.sort(
-        (a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime()
-      );
-      setActivity(activityItems);
+      setActivity(merged);
     } catch (err: any) {
       console.error("Activity load error:", err);
-      setLoadError(
-        err.message || "Failed to load activity. Make sure the backend is running."
-      );
+      setLoadError(err.message || "Failed to load activity. Make sure the backend is running.");
     } finally {
       setIsLoading(false);
     }
@@ -227,23 +209,17 @@ export default function ContractorActivity() {
       minute: "2-digit",
     });
 
-  /**
-   * Prefer the stored mapsUrl from the DB (has the exact GPS point).
-   * If not available, build a proper lat,lng query URL.
-   * Never use location name as a text search — Google Maps shows raw coords.
-   */
   const buildMapsUrl = (
     storedUrl: string | undefined | null,
     locationName: string | null
   ): string | null => {
     if (storedUrl) return storedUrl;
-    // If locationName is itself a coord string, extract and use as lat,lng
     if (locationName && isCoordString(locationName)) {
       const [latS, lngS] = locationName.split(/[,\s]+/);
       return `https://www.google.com/maps/search/?api=1&query=${latS},${lngS}`;
     }
-    // Otherwise search by name (only for real place names)
-    if (locationName) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`;
+    if (locationName)
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`;
     return null;
   };
 
@@ -262,34 +238,46 @@ export default function ContractorActivity() {
             </p>
           </div>
 
-          {activeMilestone && (
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              <button
-                onClick={handleCheckIn}
-                disabled={isCheckingIn || isCheckingOut}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#10B981] text-white text-[13.5px] font-semibold hover:bg-[#059669] transition-colors shadow-sm disabled:opacity-60"
-              >
-                {isCheckingIn ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <LogInIcon size={15} />
-                )}
-                {isCheckingIn ? "Getting location…" : "Check In"}
-              </button>
-              <button
-                onClick={handleCheckOut}
-                disabled={isCheckingIn || isCheckingOut}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0F172A] text-white text-[13.5px] font-semibold hover:bg-black transition-colors shadow-sm disabled:opacity-60"
-              >
-                {isCheckingOut ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <LogOutIcon size={15} />
-                )}
-                {isCheckingOut ? "Getting location…" : "Check Out"}
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* Refresh button */}
+            <button
+              onClick={() => { setIsLoading(true); loadActivity(); }}
+              disabled={isLoading}
+              className="p-2 rounded-lg border border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1] hover:text-[#0F172A] transition-colors disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={isLoading ? "animate-spin" : ""} />
+            </button>
+
+            {activeMilestone && (
+              <>
+                <button
+                  onClick={handleCheckIn}
+                  disabled={isCheckingIn || isCheckingOut}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#10B981] text-white text-[13.5px] font-semibold hover:bg-[#059669] transition-colors shadow-sm disabled:opacity-60"
+                >
+                  {isCheckingIn ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <LogInIcon size={15} />
+                  )}
+                  {isCheckingIn ? "Getting location…" : "Check In"}
+                </button>
+                <button
+                  onClick={handleCheckOut}
+                  disabled={isCheckingIn || isCheckingOut}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0F172A] text-white text-[13.5px] font-semibold hover:bg-black transition-colors shadow-sm disabled:opacity-60"
+                >
+                  {isCheckingOut ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <LogOutIcon size={15} />
+                  )}
+                  {isCheckingOut ? "Getting location…" : "Check Out"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {activeMilestone && (
@@ -336,7 +324,7 @@ export default function ContractorActivity() {
           <div className="flex flex-col gap-4">
             {activity.map((entry, i) => (
               <div
-                key={`${entry.milestoneId}-${i}`}
+                key={`${entry.milestoneId}-${entry.id}-${i}`}
                 className="border border-[#E2E8F0] rounded-xl p-5 hover:border-[#CBD5E1] transition-colors"
               >
                 <h3 className="text-[15.5px] font-bold text-[#0F172A] mb-4 pb-3 border-b border-[#F1F5F9]">

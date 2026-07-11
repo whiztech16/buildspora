@@ -15,6 +15,11 @@ interface ProtectedRouteProps {
  * 1. Unauthenticated users are redirected to /signin
  * 2. Authenticated users with the WRONG role are redirected to their own dashboard
  *    — preventing URL-twisting (e.g. a contractor visiting /dashboard/supplier)
+ *
+ * Multi-tab note: each browser tab now holds its own independent session via
+ * sessionStorage (see AuthContext). This means Tab-1 (client) and Tab-2
+ * (contractor) can coexist without stomping each other. If the tab has no
+ * session it goes to /signin — it does NOT inherit another tab's session.
  */
 export default function ProtectedRoute({ role, children }: ProtectedRouteProps) {
   const { user, isLoading } = useAuth();

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Lock, ShieldCheck, Info, Search, ChevronDown, Check, X, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Lock, ShieldCheck, Info, Search, ChevronDown, Check, X, Loader2, CheckCircle2, AlertCircle, Landmark, Briefcase } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import PinModal from "../../components/shared/PinModal";
 import ForgotPinModal from "../../components/shared/ForgotPinModal";
@@ -7,6 +7,8 @@ import SetPinModal from "../../components/shared/SetPinModal";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useBanks, type BankEntry } from "../../hooks/useBanks";
+
+type RecipientType = "bank" | "internal";
 
 // ─── Bank Dropdown ────────────────────────────────────────────────────────────
 function BankDropdown({ value, onChange, banks, isLoadingBanks, hasError }: {
@@ -94,6 +96,8 @@ export default function SendMoney() {
   const { user, updateUser } = useAuth();
   const { banks, isLoading: isLoadingBanks } = useBanks();
 
+  const [recipientType, setRecipientType] = useState<RecipientType>("bank");
+
   const [amount, setAmount]           = useState("");
   const [narration, setNarration]     = useState("");
   const [bankName, setBankName]       = useState("");
@@ -111,7 +115,23 @@ export default function SendMoney() {
   const [resolveError, setResolveError] = useState("");
   const resolveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const lookupAccountName = useCallback(async (accNum: string, bCode: string) => {
+  const isInternal = recipientType === "internal";
+
+  function resetRecipientFields() {
+    setAccountNumber("");
+    setAccountName("");
+    setBankName("");
+    setBankCode("");
+    setResolveError("");
+    setFormError("");
+  }
+
+  function handleRecipientTypeChange(type: RecipientType) {
+    setRecipientType(type);
+    resetRecipientFields();
+  }
+
+  const lookupBankAccountName = useCallback(async (accNum: string, bCode: string) => {
     if (accNum.length !== 10 || !bCode) return;
     setIsResolving(true);
     setResolveError("");
@@ -129,15 +149,43 @@ export default function SendMoney() {
     }
   }, []);
 
+  const lookupInternalAccountName = useCallback(async (accNum: string) => {
+    if (accNum.length !== 10) return;
+    setIsResolving(true);
+    setResolveError("");
+    setAccountName("");
+    try {
+      const res = await api.post<{ success: boolean; accountName: string }>(
+        "/api/payments/resolve-internal-account",
+        { accountNumber: accNum }
+      );
+      setAccountName(res.accountName);
+    } catch (err: any) {
+      setResolveError(err.message || "No BuildSpora account found with that number.");
+    } finally {
+      setIsResolving(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (resolveTimeoutRef.current) clearTimeout(resolveTimeoutRef.current);
-    if (accountNumber.length === 10 && bankCode) {
-      resolveTimeoutRef.current = setTimeout(() => lookupAccountName(accountNumber, bankCode), 400);
+
+    if (isInternal) {
+      if (accountNumber.length === 10) {
+        resolveTimeoutRef.current = setTimeout(() => lookupInternalAccountName(accountNumber), 400);
+      } else {
+        setAccountName("");
+        setResolveError("");
+      }
     } else {
-      setAccountName("");
-      setResolveError("");
+      if (accountNumber.length === 10 && bankCode) {
+        resolveTimeoutRef.current = setTimeout(() => lookupBankAccountName(accountNumber, bankCode), 400);
+      } else {
+        setAccountName("");
+        setResolveError("");
+      }
     }
-  }, [accountNumber, bankCode, lookupAccountName]);
+  }, [accountNumber, bankCode, isInternal, lookupBankAccountName, lookupInternalAccountName]);
 
   const numericAmount = parseFloat(amount.replace(/[^0-9.]/g, "") || "0");
   const formattedAmount = numericAmount > 0 ? `₦${numericAmount.toLocaleString()}` : "₦0.00";
@@ -151,9 +199,9 @@ export default function SendMoney() {
   }
 
   function handleProceed() {
-    if (!bankName)              { setFormError("Please select a bank."); return; }
+    if (!isInternal && !bankName) { setFormError("Please select a bank."); return; }
     if (accountNumber.length !== 10) { setFormError("Please enter a valid 10-digit account number."); return; }
-    if (!accountName)           { setFormError("Account name could not be resolved. Check account number and bank."); return; }
+    if (!accountName) { setFormError("Account name could not be resolved. Check the account number" + (isInternal ? "." : " and bank.")); return; }
     if (!numericAmount || numericAmount <= 0) { setFormError("Please enter a valid amount."); return; }
     setFormError("");
     if (user?.hasPin) {
@@ -164,19 +212,32 @@ export default function SendMoney() {
   }
 
   async function handleVerifyPin(code: string) {
-    const res = await api.post<{ success: boolean; error?: string }>(
-      "/api/payments/send-money",
-      {
-        amount: numericAmount,
-        pin: code,
-        accountNumber,
-        accountName,
-        bankCode,
-        bankName,
-        narration: narration.trim() || undefined,
-      }
-    );
-    if (!res.success) throw new Error(res.error || "Transfer failed.");
+    if (isInternal) {
+      const res = await api.post<{ success: boolean; error?: string }>(
+        "/api/payments/send-internal",
+        {
+          amount: numericAmount,
+          pin: code,
+          recipientAccountNumber: accountNumber,
+          narration: narration.trim() || undefined,
+        }
+      );
+      if (!res.success) throw new Error(res.error || "Transfer failed.");
+    } else {
+      const res = await api.post<{ success: boolean; error?: string }>(
+        "/api/payments/send-money",
+        {
+          amount: numericAmount,
+          pin: code,
+          accountNumber,
+          accountName,
+          bankCode,
+          bankName,
+          narration: narration.trim() || undefined,
+        }
+      );
+      if (!res.success) throw new Error(res.error || "Transfer failed.");
+    }
     setPinOpen(false);
     setStep("success");
   }
@@ -193,7 +254,7 @@ export default function SendMoney() {
           <span className="font-bold text-[#0F172A]">{formattedAmount}</span> has been sent to <span className="font-bold text-[#0F172A]">{accountName}</span>.
         </p>
         <div className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-5 py-4 flex flex-col gap-3 mb-8 text-left">
-          <div className="flex justify-between text-[13.5px]"><span className="text-[#64748B]">Bank</span><span className="font-semibold text-[#0F172A]">{bankName}</span></div>
+          <div className="flex justify-between text-[13.5px]"><span className="text-[#64748B]">{isInternal ? "Sent Via" : "Bank"}</span><span className="font-semibold text-[#0F172A]">{isInternal ? "BuildSpora" : bankName}</span></div>
           <div className="flex justify-between text-[13.5px]"><span className="text-[#64748B]">Account Name</span><span className="font-semibold text-[#0F172A]">{accountName}</span></div>
           <div className="flex justify-between text-[13.5px]"><span className="text-[#64748B]">Account Number</span><span className="font-semibold text-[#0F172A] tracking-wider">{accountNumber}</span></div>
           {narration && <div className="flex justify-between text-[13.5px]"><span className="text-[#64748B]">Narration</span><span className="font-semibold text-[#0F172A] max-w-[200px] text-right">{narration}</span></div>}
@@ -224,6 +285,39 @@ export default function SendMoney() {
         {/* Left — Form */}
         <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 sm:p-8 flex flex-col gap-5">
 
+          {/* Recipient type toggle */}
+          <div>
+            <label className="block text-[14px] font-bold text-[#0F172A] mb-2">Send To</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleRecipientTypeChange("bank")}
+                className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-all ${
+                  recipientType === "bank" ? "border-[#16A34A] bg-[#F0FDF4]" : "border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <Landmark size={18} className={recipientType === "bank" ? "text-[#16A34A]" : "text-[#94A3B8]"} />
+                <div>
+                  <p className="text-[13.5px] font-bold text-[#0F172A]">Bank Account</p>
+                  <p className="text-[11.5px] text-[#64748B]">Any Nigerian bank</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRecipientTypeChange("internal")}
+                className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-all ${
+                  recipientType === "internal" ? "border-[#16A34A] bg-[#F0FDF4]" : "border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <Briefcase size={18} className={recipientType === "internal" ? "text-[#16A34A]" : "text-[#94A3B8]"} />
+                <div>
+                  <p className="text-[13.5px] font-bold text-[#0F172A]">BuildSpora User</p>
+                  <p className="text-[11.5px] text-[#64748B]">Instant, no charges</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Amount */}
           <div>
             <label className="block text-[14px] font-bold text-[#0F172A] mb-2">Amount (₦)</label>
@@ -242,21 +336,25 @@ export default function SendMoney() {
             </div>
           </div>
 
-          {/* Bank */}
-          <div>
-            <label className="block text-[14px] font-bold text-[#0F172A] mb-2">Bank</label>
-            <BankDropdown
-              value={bankName}
-              onChange={(name, code) => { setBankName(name); setBankCode(code); setFormError(""); }}
-              banks={banks}
-              isLoadingBanks={isLoadingBanks}
-              hasError={!!formError}
-            />
-          </div>
+          {/* Bank — only for external transfers */}
+          {!isInternal && (
+            <div>
+              <label className="block text-[14px] font-bold text-[#0F172A] mb-2">Bank</label>
+              <BankDropdown
+                value={bankName}
+                onChange={(name, code) => { setBankName(name); setBankCode(code); setFormError(""); }}
+                banks={banks}
+                isLoadingBanks={isLoadingBanks}
+                hasError={!!formError}
+              />
+            </div>
+          )}
 
           {/* Account Number */}
           <div>
-            <label className="block text-[14px] font-bold text-[#0F172A] mb-2">Account Number</label>
+            <label className="block text-[14px] font-bold text-[#0F172A] mb-2">
+              {isInternal ? "BuildSpora Account Number" : "Account Number"}
+            </label>
             <input
               type="text"
               inputMode="numeric"
@@ -280,7 +378,9 @@ export default function SendMoney() {
               ) : resolveError ? (
                 <><AlertCircle size={15} className="text-red-500 shrink-0" /><span className="text-red-500 text-[13px]">{resolveError}</span></>
               ) : (
-                <span className="text-gray-400">Auto-filled after account number &amp; bank</span>
+                <span className="text-gray-400">
+                  {isInternal ? "Auto-filled after account number" : "Auto-filled after account number & bank"}
+                </span>
               )}
             </div>
           </div>
@@ -328,7 +428,7 @@ export default function SendMoney() {
           <div className="flex flex-col gap-5">
             <div className="flex items-center justify-between">
               <span className="text-[14px] text-[#64748B]">Payment Type</span>
-              <span className="text-[14px] font-medium text-[#475569]">Bank Transfer</span>
+              <span className="text-[14px] font-medium text-[#475569]">{isInternal ? "BuildSpora Transfer" : "Bank Transfer"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[14px] text-[#64748B]">Paying From</span>
@@ -347,7 +447,7 @@ export default function SendMoney() {
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-[14.5px] text-[#64748B]">
-                Bank Charges <Info size={14} className="text-[#94A3B8]" />
+                {isInternal ? "Transfer Fee" : "Bank Charges"} <Info size={14} className="text-[#94A3B8]" />
               </div>
               <span className="text-[14.5px] font-medium text-[#64748B]">₦0.00</span>
             </div>
@@ -360,7 +460,11 @@ export default function SendMoney() {
               <ShieldCheck size={20} className="text-[#16A34A] shrink-0 mt-0.5" strokeWidth={2.5} />
               <div className="flex flex-col gap-1">
                 <span className="text-[13.5px] font-bold text-[#0F172A]">Secure Payment</span>
-                <span className="text-[13px] text-[#475569] leading-relaxed">Your payment is protected with bank-level security and encryption.</span>
+                <span className="text-[13px] text-[#475569] leading-relaxed">
+                  {isInternal
+                    ? "Instant transfer between BuildSpora accounts, protected by your transaction PIN."
+                    : "Your payment is protected with bank-level security and encryption."}
+                </span>
               </div>
             </div>
           </div>
@@ -387,7 +491,6 @@ export default function SendMoney() {
         onClose={() => setForgotPinOpen(false)}
         onSuccess={() => setPinOpen(true)}
       />
-      {/* Set PIN Modal */}
       <SetPinModal 
         isOpen={setPinModalOpen} 
         onClose={() => setSetPinModalOpen(false)} 
